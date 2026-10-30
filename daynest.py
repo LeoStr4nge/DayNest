@@ -23,9 +23,9 @@ import tkinter.font as tkfont
 from tkinter import colorchooser, messagebox, ttk
 import uuid
 import winreg
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 import xml.etree.ElementTree as ET
 
 from dateutil.rrule import rrulestr, rruleset
@@ -387,6 +387,86 @@ def unprotect(encoded):
         ctypes.windll.kernel32.LocalFree(out.pbData)
 
 
+PROVIDERS = {'icloud': 'iCloud', 'custom': '自定义 CalDAV'}
+ICLOUD_DISCOVERY = 'https://caldav.icloud.com/'
+
+
+def server_url(value):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError('请填写 HTTPS 发现地址')
+    value = value.strip()
+    try:
+        parsed = urlparse(value)
+        port = parsed.port
+        host = parsed.hostname
+    except ValueError as error:
+        raise ValueError('服务器地址或端口无效') from error
+    if parsed.scheme != 'https' or not host or parsed.username is not None or parsed.password is not None:
+        raise ValueError('服务器地址必须是 HTTPS URL，账户和密码请填写在独立字段中')
+    if parsed.fragment or any(char.isspace() or ord(char) < 32 for char in value) or '\\' in value:
+        raise ValueError('服务器地址不能包含空白、反斜线或片段标记')
+    if port == 0:
+        raise ValueError('服务器端口必须大于零')
+    host = host.lower().rstrip('.').encode('idna').decode('ascii')
+    if not host:
+        raise ValueError('服务器域名无效')
+    if ':' in host:
+        host = '[' + host + ']'
+    origin = 'https://' + host + (f':{port}' if port and port != 443 else '')
+    path = quote(parsed.path or '/', safe="/%:@!$&'()*+,;=-._~")
+    query = quote(parsed.query, safe="/%?:@!$&'()*+,;=+-._~")
+    return origin + path + ('?' + query if query else '')
+
+
+def url_origin(value):
+    parsed = urlparse(server_url(value))
+    return f'{parsed.scheme}://{parsed.netloc}'
+
+
+def connection_config(config):
+    provider = config.get('provider', 'icloud')
+    if provider == 'icloud':
+        return {'provider': 'icloud', 'discovery_url': ICLOUD_DISCOVERY,
+                'calendar_home_url': '', 'trusted_origins': []}
+    if provider != 'custom':
+        raise ValueError('请选择支持的日历服务类型')
+    discovery = server_url(config.get('discovery_url', ''))
+    home = config.get('calendar_home_url', '')
+    home = server_url(home) if home else ''
+    extra = config.get('trusted_origins', [])
+    if isinstance(extra, str):
+        extra = [part for part in re.split(r'[,;，；\s]+', extra.strip()) if part]
+    if not isinstance(extra, list):
+        raise ValueError('额外可信地址格式无效')
+    origins = []
+    for value in extra:
+        normalized = server_url(value)
+        parsed = urlparse(normalized)
+        if parsed.path != '/' or parsed.query:
+            raise ValueError('额外可信地址只填写 HTTPS 域名及端口，不包含路径')
+        origins.append(url_origin(normalized))
+    return {'provider': provider, 'discovery_url': discovery,
+            'calendar_home_url': home, 'trusted_origins': sorted(set(origins))}
+
+
+def cache_matches(cache, config):
+    try:
+        return (cache.get('username') == config.get('username') and
+                connection_config(cache.get('connection', {})) == connection_config(config))
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def urlopen(request, timeout):
+    # Validate redirects in CalDAV before forwarding credentials or DAV methods.
+    return build_opener(NoRedirect()).open(request, timeout=timeout)
+
+
 def normalized_opacity(value):
     try:
         value = float(value)
@@ -396,7 +476,8 @@ def normalized_opacity(value):
 
 
 def load_config():
-    defaults = {'username': '', 'password': '', 'x': 60, 'y': 60, 'desktop': True, 'opacity': 1.0, 'theme': 'midnight', 'accent': None}
+    defaults = {'username': '', 'password': '', 'x': 60, 'y': 60, 'desktop': True, 'opacity': 1.0, 'theme': 'midnight', 'accent': None,
+                'provider': 'icloud', 'discovery_url': '', 'calendar_home_url': '', 'trusted_origins': []}
     try:
         stored = json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
         if isinstance(stored, dict):
@@ -514,25 +595,65 @@ class ResourceCache:
 
 
 class CalDAV:
-    def __init__(self, username, password, resource_cache=None, cancel=None):
+    def __init__(self, username, password, resource_cache=None, cancel=None, connection=None):
         self.auth = 'Basic ' + base64.b64encode(f'{username}:{password}'.encode()).decode()
         self.resource_cache = resource_cache if resource_cache is not None else ResourceCache()
         self.cancel = cancel
+        self.connection = connection_config(connection or {})
+        self.allowed_origins = {url_origin(self.connection['discovery_url'])}
+        if self.connection['calendar_home_url']:
+            self.allowed_origins.add(url_origin(self.connection['calendar_home_url']))
+        self.allowed_origins.update(self.connection['trusted_origins'])
+
+    def validate_url(self, url):
+        normalized = server_url(url)
+        parsed = urlparse(normalized)
+        if self.connection['provider'] == 'icloud':
+            host = parsed.hostname
+            allowed = (host.endswith('.icloud.com') or host.endswith('.icloud.com.cn')) and parsed.port in (None, 443)
+        else:
+            allowed = url_origin(normalized) in self.allowed_origins
+        if not allowed:
+            raise ValueError('日历服务返回未授权的服务器地址：' + url_origin(normalized) + '；请检查服务配置和额外可信地址')
+        return normalized
+
+    def open(self, request, timeout, allow_redirects=False):
+        for attempt in range(6):
+            if self.cancel is not None and self.cancel.is_set():
+                raise CancelledError()
+            self.validate_url(request.full_url)
+            try:
+                return urlopen(request, timeout=timeout), request.full_url
+            except HTTPError as error:
+                if error.code not in (301, 302, 303, 307, 308):
+                    raise
+                location = error.headers.get('Location') if error.headers else None
+                if not allow_redirects or not location:
+                    if error.fp is not None:
+                        error.close()
+                    raise ValueError('日历地址发生重定向，请检查地址或刷新后重试') from error
+                try:
+                    target = self.validate_url(urljoin(request.full_url, location))
+                finally:
+                    if error.fp is not None:
+                        error.close()
+                if attempt == 5:
+                    raise ValueError('日历服务重定向次数过多')
+                request = Request(target, data=request.data, headers=dict(request.header_items()), method=request.get_method())
 
     def request(self, method, url, xml, depth='0'):
-        parsed = urlparse(url)
-        host = (parsed.hostname or '').lower().rstrip('.')
-        allowed = host.endswith('.icloud.com') or host.endswith('.icloud.com.cn')
-        if parsed.scheme != 'https' or not allowed:
-            raise ValueError(f'当前连接配置仅允许 iCloud 的 HTTPS 地址；当前服务器：{host or "空"}')
+        url = self.validate_url(url)
         headers = {'Authorization': self.auth, 'Content-Type': 'application/xml; charset=utf-8', 'Depth': depth}
         req = Request(url, data=xml.encode('utf-8'), headers=headers, method=method)
         for attempt in range(3):
             if self.cancel is not None and self.cancel.is_set():
                 raise CancelledError()
             try:
-                with urlopen(req, timeout=25) as response:
-                    return ET.fromstring(response.read())
+                response, effective_url = self.open(req, 25, allow_redirects=True)
+                with response as stream:
+                    root = ET.fromstring(stream.read())
+                    root.set('_request_url', effective_url)
+                    return root
             except HTTPError as e:
                 if e.code == 401:
                     raise ValueError('认证失败：请检查日历账户和密码，部分服务需要使用应用专用密码') from e
@@ -558,30 +679,57 @@ class CalDAV:
         return self.request('PROPFIND', url, body, depth)
 
     def discover(self):
-        base = 'https://caldav.icloud.com/'
-        root = self.propfind(base, '<d:current-user-principal/>')
-        principal = root.find('.//d:current-user-principal/d:href', NS)
-        if principal is None or not principal.text:
-            raise ValueError('日历服务未返回用户日历地址')
-        root = self.propfind(urljoin(base, principal.text), '<c:calendar-home-set/>')
-        home = root.find('.//c:calendar-home-set/d:href', NS)
-        if home is None or not home.text:
-            raise ValueError('日历服务未返回日历目录')
-        home_url = urljoin(base, home.text)
-        root = self.propfind(home_url, '<d:resourcetype/><d:displayname/><c:supported-calendar-component-set/>', '1')
+        properties = ('<d:current-user-principal/><c:calendar-home-set/>'
+                      '<d:resourcetype/><d:displayname/><c:supported-calendar-component-set/>')
+
+        def props(root):
+            if root.tag not in ('{DAV:}multistatus', '{DAV:}response'):
+                raise ValueError('日历发现响应异常')
+            return [part.find('d:prop', NS) for part in root.findall('.//d:propstat', NS)
+                    if ' 200 ' in part.findtext('d:status', default='', namespaces=NS) and part.find('d:prop', NS) is not None]
+
+        def href_property(root, name):
+            for prop in props(root):
+                href = prop.find(name + '/d:href', NS)
+                if href is not None and href.text:
+                    return self.validate_url(urljoin(root.get('_request_url', base), href.text))
+            return None
+
+        base = self.connection['discovery_url']
+        home = self.connection['calendar_home_url']
+        if not home:
+            root = self.propfind(base, properties)
+            base = root.get('_request_url', base)
+            home = href_property(root, 'c:calendar-home-set')
+            if not home:
+                principal = href_property(root, 'd:current-user-principal')
+                if principal:
+                    root = self.propfind(principal, properties)
+                    base = root.get('_request_url', principal)
+                    home = href_property(root, 'c:calendar-home-set')
+            # Some services expose a calendar or its home directly at the URL.
+            if not home:
+                home = base
+        root = self.propfind(home, '<d:resourcetype/><d:displayname/><c:supported-calendar-component-set/>', '1')
+        home_url = root.get('_request_url', home)
         result = []
         for response in root.findall('d:response', NS):
-            href = response.find('d:href', NS)
-            if href is None or not href.text:
+            href = response.findtext('d:href', namespaces=NS)
+            if not href:
                 continue
-            resource = response.find('.//d:resourcetype', NS)
-            if resource is None or resource.find('c:calendar', NS) is None:
-                continue
-            components = response.findall('.//c:supported-calendar-component-set/c:comp', NS)
-            if components and not any(c.attrib.get('name', '').upper() == 'VEVENT' for c in components):
-                continue
-            name = response.find('.//d:displayname', NS)
-            result.append((urljoin(base, href.text), name.text if name is not None and name.text else '未命名日历'))
+            for prop in props(response):
+                resource = prop.find('d:resourcetype', NS)
+                if resource is None or resource.find('c:calendar', NS) is None:
+                    continue
+                components = prop.findall('c:supported-calendar-component-set/c:comp', NS)
+                if components and not any(c.attrib.get('name', '').upper() == 'VEVENT' for c in components):
+                    continue
+                url = self.validate_url(urljoin(home_url, href))
+                name = prop.findtext('d:displayname', namespaces=NS) or '未命名日历'
+                if not any(item[0] == url for item in result):
+                    result.append((url, name))
+        if not result:
+            raise ValueError('未发现可用日历，请检查发现地址，或填写日历目录地址')
         return result
 
     def events(self, calendar_url, start, end):
@@ -700,10 +848,7 @@ class CalDAV:
         return resources
 
     def put_event(self, href, raw, etag=None, create=False):
-        parsed = urlparse(href)
-        host = (parsed.hostname or '').lower().rstrip('.')
-        if parsed.scheme != 'https' or not (host.endswith('.icloud.com') or host.endswith('.icloud.com.cn')):
-            raise ValueError('当前连接配置不允许向非 iCloud 地址写入')
+        href = self.validate_url(href)
         headers = {'Authorization': self.auth, 'Content-Type': 'text/calendar; charset=utf-8'}
         if create:
             headers['If-None-Match'] = '*'
@@ -713,8 +858,9 @@ class CalDAV:
             raise ValueError('缺少事件版本号，无法安全修改')
         req = Request(href, data=raw.encode('utf-8'), headers=headers, method='PUT')
         try:
-            with urlopen(req, timeout=30) as response:
-                response.read()
+            response, _ = self.open(req, 30)
+            with response as stream:
+                stream.read()
         except HTTPError as e:
             if e.code == 412:
                 raise ValueError('这条日程已在其他设备上修改，请刷新后重试') from e
@@ -1075,7 +1221,9 @@ class App:
     def __init__(self):
         self.config = load_config()
         self.cache = load_cache()
-        self.resource_cache = ResourceCache(self.cache, self.config.get('username'))
+        if not cache_matches(self.cache, self.config):
+            self.cache = {}
+        self.resource_cache = ResourceCache(self.cache if cache_matches(self.cache, self.config) else {}, self.config.get('username'))
         self.cache_lock = threading.Lock()
         self.syncing = False
         self.write_busy = False
@@ -1084,9 +1232,9 @@ class App:
         self.closed = threading.Event()
         self.sync_token = None
         self.events = []
-        self.calendars = self.cache.get('calendars', []) if self.cache.get('username') == self.config.get('username') else []
-        self.pins = self.cache.get('pins', []) if self.cache.get('username') == self.config.get('username') else []
-        self.month_cache = dict(self.cache.get('months', {})) if self.cache.get('username') == self.config.get('username') else {}
+        self.calendars = self.cache.get('calendars', []) if cache_matches(self.cache, self.config) else []
+        self.pins = self.cache.get('pins', []) if cache_matches(self.cache, self.config) else []
+        self.month_cache = dict(self.cache.get('months', {})) if cache_matches(self.cache, self.config) else {}
         retained_months = persistent_months(self.month_cache)
         if retained_months != self.month_cache:
             self.month_cache = retained_months
@@ -1145,7 +1293,7 @@ class App:
 
     def resources(self):
         if not hasattr(self, 'resource_cache'):
-            self.resource_cache = ResourceCache(self.cache, self.config.get('username'))
+            self.resource_cache = ResourceCache(self.cache if cache_matches(self.cache, self.config) else {}, self.config.get('username'))
         return self.resource_cache
 
     def month_worker(self):
@@ -1297,6 +1445,7 @@ class App:
     def save_pins(self):
         with self.cache_lock:
             self.cache['username'] = self.config.get('username')
+            self.cache['connection'] = connection_config(self.config)
             self.cache['pins'] = self.pins
             save_cache(self.cache)
 
@@ -1317,7 +1466,7 @@ class App:
         self.render_pins()
 
     def show_cached_events(self):
-        if self.cache.get('username') != self.config.get('username'):
+        if not cache_matches(self.cache, self.config):
             return
         try:
             events = deserialize_events(self.cache.get('events', []))
@@ -1346,11 +1495,16 @@ class App:
         if not self.config.get('username') or not self.config.get('password'):
             self.settings()
             return
+        try:
+            connection = connection_config(self.config)
+        except ValueError as error:
+            self.status.config(text='连接配置无效：' + str(error))
+            return
         self.syncing = True
         token = self.sync_token = object()
         username, password = self.config['username'], self.config['password']
         resource_cache = self.resources()
-        cached_calendars = list(self.cache.get('calendars', [])) if self.cache.get('username') == username else []
+        cached_calendars = list(self.cache.get('calendars', [])) if cache_matches(self.cache, self.config) else []
         cached_discovered_at = self.cache.get('discovered_at', 0)
         pinned_snapshot = json.loads(json.dumps(getattr(self, 'pins', [])))
         self.status.config(text='正在同步日历…')
@@ -1359,7 +1513,7 @@ class App:
             sync_start = time.monotonic()
             log.info('sync started')
             try:
-                client = CalDAV(username, unprotect(password), resource_cache, cancel=self.closed)
+                client = CalDAV(username, unprotect(password), resource_cache, cancel=self.closed, connection=connection)
                 discovered_at = cached_discovered_at
                 if cached_calendars and time.time() - discovered_at < 86400:
                     calendars = cached_calendars
@@ -1439,7 +1593,7 @@ class App:
         with self.cache_lock:
             if pin_updates is not None:
                 self.cache['pins'] = self.pins
-            self.cache.update(username=username, events=serialize_events(events), calendars=calendars,
+            self.cache.update(username=username, connection=connection_config(self.config), events=serialize_events(events), calendars=calendars,
                               synced_at=datetime.now(timezone.utc).isoformat(), discovered_at=discovered_at)
             self.cache['resource_cache'] = self.resources().snapshot()
             try:
@@ -1589,13 +1743,14 @@ class App:
         next_month = shift_month(month, 1)
         end = datetime.combine(next_month, datetime.min.time(), LOCAL_TZ)
         generation = self.month_generation
+        connection = connection_config(self.config)
 
         def run():
             if generation != self.month_generation or self.closed.is_set():
                 return
             t0 = time.monotonic()
             try:
-                client = CalDAV(username, unprotect(password), resource_cache, cancel=self.closed)
+                client = CalDAV(username, unprotect(password), resource_cache, cancel=self.closed, connection=connection)
                 def fetch_one(url, name):
                     found = []
                     with self.month_request_limit:
@@ -1635,6 +1790,7 @@ class App:
         self.month_cache = retained
         with self.cache_lock:
             self.cache['username'] = username
+            self.cache['connection'] = connection_config(self.config)
             self.cache['months'] = persistent_months(self.month_cache)
             self.cache['resource_cache'] = self.resources().snapshot()
             save_cache(self.cache)
@@ -1967,10 +2123,11 @@ class App:
                 etag = None
             self.write_busy = True
             username, password = self.config['username'], self.config['password']
+            connection = connection_config(self.config)
             self.status.config(text='正在保存到日历…')
             def run_write():
                 try:
-                    client = CalDAV(username, unprotect(password))
+                    client = CalDAV(username, unprotect(password), connection=connection)
                     client.put_event(href, raw, etag, create=not editing)
                     get_logger().info('event write complete action=%s', 'edit' if editing else 'create')
                     self.post(write_done)
@@ -1998,6 +2155,7 @@ class App:
                             pin['event'] = serialize_events([(start_at, name, selected[2], False, updated_meta)])[0]
                     self.render_pins()
                 with self.cache_lock:
+                    self.cache['connection'] = connection_config(self.config)
                     self.cache['months'] = self.month_cache
                     self.cache['pins'] = self.pins
                     self.cache['resource_cache'] = self.resources().snapshot()
@@ -2072,7 +2230,7 @@ class App:
     def settings(self):
         win = tk.Toplevel(self.root)
         win.title('设置 · DayNest')
-        win.geometry('550x600')
+        win.geometry('550x650')
         win.resizable(False, False)
         dialog_header(win, '设置', '连接你的日历，让日程陪伴你的桌面。')
         body = ttk.Frame(win, padding=(24, 16, 24, 0))
@@ -2086,14 +2244,45 @@ class App:
         tabs.add(appearance_frame, text='外观与个性化')
         tabs.add(account_frame, text='日历账户')
         frame = account_frame
-        ttk.Label(frame, text='账户名或邮箱').grid(row=0, column=0, sticky='w', pady=7)
-        user = ttk.Entry(frame, width=35)
-        user.grid(row=0, column=1, pady=7, sticky='ew')
+        ttk.Label(frame, text='日历服务').grid(row=0, column=0, sticky='w', pady=7)
+        provider_choice = ttk.Combobox(frame, name='provider', state='readonly', values=list(PROVIDERS.values()), width=30)
+        provider_choice.current(list(PROVIDERS).index(self.config.get('provider', 'icloud'))
+                                if self.config.get('provider', 'icloud') in PROVIDERS else 0)
+        provider_choice.grid(row=0, column=1, sticky='ew', pady=7)
+        discovery = ttk.Entry(frame, name='discovery_url', width=35)
+        discovery.insert(0, self.config.get('discovery_url') or '')
+        home = ttk.Entry(frame, name='calendar_home_url', width=35)
+        home.insert(0, self.config.get('calendar_home_url') or '')
+        trusted = ttk.Entry(frame, name='trusted_origins', width=35)
+        origins = self.config.get('trusted_origins', [])
+        trusted.insert(0, origins if isinstance(origins, str) else ', '.join(origins))
+        custom_fields = []
+        for row, label, entry in ((1, '发现地址', discovery), (2, '日历目录（可选）', home),
+                                  (3, '可信地址（可选）', trusted)):
+            caption = ttk.Label(frame, text=label)
+            caption.grid(row=row, column=0, sticky='w', pady=7)
+            entry.grid(row=row, column=1, sticky='ew', pady=7)
+            custom_fields.extend((caption, entry))
+        service_hint = ttk.Label(frame, style='Muted.TLabel', wraplength=450,
+                                 font=('Microsoft YaHei UI', 9))
+        service_hint.grid(row=4, column=0, columnspan=2, sticky='w', pady=(4, 10))
+        def provider_changed(_event=None):
+            custom = provider_choice.current() == 1
+            for widget in custom_fields:
+                widget.grid() if custom else widget.grid_remove()
+            service_hint.configure(text=('仅支持 HTTPS。跨域时，可信地址填 https://域名[:端口]，多个地址用逗号分隔。'
+                                         if custom else 'iCloud 使用预设发现地址，无需手动填写 URL。'))
+        provider_choice.bind('<<ComboboxSelected>>', provider_changed)
+        provider_changed()
+        ttk.Label(frame, text='账户名或邮箱').grid(row=5, column=0, sticky='w', pady=7)
+        user = ttk.Entry(frame, name='username', width=35)
+        user.grid(row=5, column=1, pady=7, sticky='ew')
         user.insert(0, self.config.get('username', ''))
-        ttk.Label(frame, text='日历密码').grid(row=1, column=0, sticky='w', pady=7)
-        password = ttk.Entry(frame, width=35, show='•')
-        password.grid(row=1, column=1, pady=7, sticky='ew')
-        ttk.Label(frame, text='留空保留原密码；部分服务需要应用专用密码', style='Muted.TLabel').grid(row=2, column=1, sticky='w')
+        ttk.Label(frame, text='日历密码').grid(row=6, column=0, sticky='w', pady=7)
+        password = ttk.Entry(frame, name='password', width=35, show='•')
+        password.grid(row=6, column=1, pady=7, sticky='ew')
+        ttk.Label(frame, text='留空保留原密码；部分服务需要应用专用密码', style='Muted.TLabel',
+                  wraplength=340).grid(row=7, column=1, sticky='w')
         frame = appearance_frame
         desktop = tk.BooleanVar(value=self.config.get('desktop', True))
         ttk.Checkbutton(frame, text='固定在桌面层（Win + D 时仍可见）', variable=desktop).grid(row=3, column=0, columnspan=2, sticky='w', pady=14)
@@ -2188,15 +2377,30 @@ class App:
                 tabs.select(account_frame)
                 messagebox.showerror('缺少账户', '请输入日历账户名或邮箱', parent=win)
                 return
-            account_changed = self.config.get('username') != user.get().strip()
+            options = {'provider': list(PROVIDERS)[provider_choice.current()],
+                       'discovery_url': discovery.get().strip(), 'calendar_home_url': home.get().strip(),
+                       'trusted_origins': trusted.get().strip()}
+            try:
+                new_connection = connection_config(options)
+                try:
+                    old_connection = connection_config(self.config)
+                except ValueError:
+                    old_connection = None
+            except ValueError as error:
+                tabs.select(account_frame)
+                messagebox.showerror('连接配置无效', str(error), parent=win)
+                return
+            account_changed = (self.config.get('username') != user.get().strip() or
+                               new_connection != old_connection)
             if account_changed and not password.get():
                 tabs.select(account_frame)
-                messagebox.showerror('缺少密码', '更换日历账户时，请输入新账户的日历密码。', parent=win)
+                messagebox.showerror('缺少密码', '更换日历账户或服务时，请输入对应的日历密码。', parent=win)
                 return
             if not password.get() and not self.config.get('password'):
                 tabs.select(account_frame)
                 messagebox.showerror('缺少密码', '请输入日历密码；如果服务要求，请使用应用专用密码', parent=win)
                 return
+            self.config.update(new_connection)
             self.config['username'] = user.get().strip()
             self.sync_token = None
             self.syncing = False
@@ -2207,16 +2411,19 @@ class App:
                 self.month_cache = {}
                 self.pins = []
                 self.calendars = []
+                self.render([])
                 self.render_pins()
+                if getattr(self, 'calendar_window', None) and self.calendar_window.winfo_exists():
+                    self.draw_calendar()
                 with self.cache_lock:
-                    self.cache = {'username': self.config['username'], 'months': {}, 'pins': []}
+                    self.cache = {'username': self.config['username'], 'connection': new_connection, 'months': {}, 'pins': []}
                     save_cache(self.cache)
             if password.get():
                 self.config['password'] = protect(password.get())
             save_appearance()
             self.refresh()
         footer = ttk.Frame(win, padding=(24, 10, 24, 20))
-        footer.pack(fill='x')
+        footer.pack(side='bottom', fill='x', before=body)
         ttk.Button(footer, text='保存外观', command=save_appearance).pack(side='left')
         ttk.Button(footer, text='保存并同步', style='Accent.TButton', command=commit).pack(side='right')
         self.show_dialog(win, theme_choice)

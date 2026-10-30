@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory, \
         app.settings()
         app.root.update()
         settings = next(w for w in app.modal_windows if w not in (edit, app.calendar_window))
-        chooser = next(w for w in descendants(settings) if isinstance(w, m.ttk.Combobox))
+        chooser = next(w for w in descendants(settings) if isinstance(w, m.ttk.Combobox) and m.THEMES['midnight'][0] in w.cget('values'))
         initial_images = tuple(map(str, app.root.opacity_style_images))
         initial_image_count = len(app.root.tk.call('image', 'names'))
         listbox = app.listbox
@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory, \
         app.settings()
         app.root.update()
         settings = next(iter(app.modal_windows))
-        chooser = next(w for w in descendants(settings) if isinstance(w, m.ttk.Combobox))
+        chooser = next(w for w in descendants(settings) if isinstance(w, m.ttk.Combobox) and m.THEMES['midnight'][0] in w.cget('values'))
         chooser.current(list(m.THEMES).index('paper'))
         chooser.event_generate('<<ComboboxSelected>>')
         with patch.object(m.colorchooser, 'askcolor', return_value=(None, '#7c3aed')):
