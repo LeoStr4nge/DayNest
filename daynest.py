@@ -49,6 +49,66 @@ ACCENT = '#84d0ff'
 FILE_WRITE_LOCK = threading.Lock()
 
 
+class SingleInstance:
+    """Keep one running DayNest process in the Windows login session."""
+
+    def __init__(self, name=r'Local\DayNest.SingleInstance'):
+        self.name = name
+        self.handle = None
+        self.kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        self.kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+        self.kernel32.CreateMutexW.restype = wintypes.HANDLE
+        self.kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        self.kernel32.CloseHandle.restype = wintypes.BOOL
+
+    def acquire(self):
+        if self.handle is not None:
+            raise RuntimeError('Single-instance guard already acquired')
+        handle = self.kernel32.CreateMutexW(None, False, self.name)
+        error = ctypes.get_last_error()
+        if not handle:
+            raise ctypes.WinError(error)
+        if error == 183:  # ERROR_ALREADY_EXISTS
+            self.kernel32.CloseHandle(handle)
+            return False
+        self.handle = handle
+        return True
+
+    def close(self):
+        if self.handle is not None:
+            self.kernel32.CloseHandle(self.handle)
+            self.handle = None
+
+
+def startup_message(text):
+    # No Tk root or application state is needed for rejected launches.
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    user32.MessageBoxW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.UINT]
+    user32.MessageBoxW.restype = ctypes.c_int
+    user32.MessageBoxW(None, text, APP_NAME, 0x40)
+
+
+def main(restore_window=False):
+    guard = SingleInstance()
+    try:
+        try:
+            acquired = guard.acquire()
+        except OSError:
+            startup_message('无法检查 DayNest 是否已运行，请稍后重试。')
+            return 1
+        if not acquired:
+            startup_message('DayNest 已在运行。请使用现有窗口；如需恢复普通窗口，请先关闭 DayNest，再运行 RestoreWindow.pyw。')
+            return 0
+        if restore_window:
+            config = load_config()
+            config['desktop'] = False
+            save_config(config)
+        App().run()
+        return 0
+    finally:
+        guard.close()
+
+
 def apply_theme(root):
     for name in ('TkDefaultFont', 'TkTextFont', 'TkMenuFont'):
         tkfont.nametofont(name, root=root).configure(family='Microsoft YaHei UI', size=10)
@@ -1905,4 +1965,4 @@ class App:
 
 
 if __name__ == '__main__':
-    App().run()
+    raise SystemExit(main())

@@ -13,7 +13,7 @@ DayNest.pyw             图形启动入口
 daynest.py              主程序、同步、缓存和界面
 RestoreWindow.pyw       关闭桌面模式并重新启动
 requirements.txt        Python 依赖
-tests/check_*.py        十个离线检查脚本
+tests/check_*.py        离线检查脚本
 tests/run_checks.py     检查运行器
 ```
 
@@ -63,6 +63,10 @@ tests/run_checks.py     检查运行器
 
 协议参考：[RFC 4791](https://www.rfc-editor.org/rfc/rfc4791.html#section-7.8)。
 
+## 单实例启动
+
+三个启动入口统一通过 `main()`，在读取或写入配置前获取 Windows 登录会话内的命名互斥量 `Local\DayNest.SingleInstance`。重复启动只显示提示；恢复窗口脚本也不会修改运行中实例的配置。句柄保持到主循环及退出保存完成，并在正常退出或进程终止后由 Windows 释放。互斥量创建失败时停止启动，避免绕过单实例保护。
+
 ## 线程与界面
 
 网络工作线程只向结果队列投递结果，主线程验证账户、请求标识和月份任务代次后更新界面与缓存；窗口关闭后不再接收结果。
@@ -84,7 +88,6 @@ tests/run_checks.py     检查运行器
 - 重复日程或全天日程的编辑、事件删除。
 - `RANGE=THISANDFUTURE` 和 `RDATE;VALUE=PERIOD`，遇到时明确报错。
 - 固定项跨所有未读取月份主动追踪外部改期或删除。
-- 应用单实例控制；多实例仍可能覆盖彼此的配置。
 - 服务器同步标记；当前仍需获取范围内的完整版本列表。
 
 格式参考：[RFC 5545](https://www.rfc-editor.org/rfc/rfc5545.html)。

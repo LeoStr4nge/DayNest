@@ -1,5 +1,5 @@
-from daynest import App
+from daynest import main
 
 
 if __name__ == '__main__':
-    App().run()
+    raise SystemExit(main())
