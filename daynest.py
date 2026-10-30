@@ -275,14 +275,23 @@ def unprotect(encoded):
         ctypes.windll.kernel32.LocalFree(out.pbData)
 
 
+def normalized_opacity(value):
+    try:
+        value = float(value)
+    except (ValueError, TypeError, OverflowError):
+        return 1.0
+    return value if 0.4 <= value <= 1.0 else 1.0
+
+
 def load_config():
-    defaults = {'username': '', 'password': '', 'x': 60, 'y': 60, 'desktop': True}
+    defaults = {'username': '', 'password': '', 'x': 60, 'y': 60, 'desktop': True, 'opacity': 1.0}
     try:
         stored = json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
         if isinstance(stored, dict):
             defaults.update(stored)
     except (OSError, ValueError):
         pass
+    defaults['opacity'] = normalized_opacity(defaults['opacity'])
     return defaults
 
 
@@ -986,6 +995,7 @@ class App:
         self.root.geometry(f"360x580+{self.config.get('x',60)}+{self.config.get('y',60)}")
         self.root.configure(bg=BG)
         self.root.attributes('-topmost', False)
+        self.root.attributes('-alpha', normalized_opacity(self.config.get('opacity', 1.0)))
         self.root.bind('<Configure>', self.moved)
         self.root.bind('<Destroy>', lambda event: self.closed.set() if event.widget == self.root else None)
         self.root.protocol('WM_DELETE_WINDOW', self.close)
@@ -1900,7 +1910,7 @@ class App:
     def settings(self):
         win = tk.Toplevel(self.root)
         win.title('设置 iCloud 日历')
-        win.geometry('550x420')
+        win.geometry('550x500')
         win.resizable(False, False)
         dialog_header(win, '设置', '连接 iCloud，让日程陪伴你的桌面。')
         frame = ttk.Frame(win, padding=24)
@@ -1917,6 +1927,28 @@ class App:
         ttk.Checkbutton(frame, text='固定在桌面层（Win + D 时仍可见）', variable=desktop).grid(row=3, column=0, columnspan=2, sticky='w', pady=14)
         autostart = tk.BooleanVar(value=self.config.get('autostart', False))
         ttk.Checkbutton(frame, text='登录 Windows 时自动启动', variable=autostart).grid(row=4, column=0, columnspan=2, sticky='w')
+        ttk.Label(frame, text='窗口透明度').grid(row=5, column=0, sticky='w', pady=(18, 5))
+        transparency = tk.DoubleVar(value=round((1.0 - normalized_opacity(self.config.get('opacity', 1.0))) * 100))
+        opacity_frame = ttk.Frame(frame)
+        opacity_frame.grid(row=5, column=1, sticky='ew', pady=(18, 5))
+        opacity_label = ttk.Label(opacity_frame, width=5, anchor='e')
+        opacity_label.pack(side='right')
+        def preview_opacity(value):
+            percent = round(float(value))
+            opacity_label.configure(text=f'{percent}%')
+            self.root.attributes('-alpha', normalized_opacity(1.0 - percent / 100))
+        opacity_slider = ttk.Scale(opacity_frame, from_=0, to=60, variable=transparency,
+                                   command=preview_opacity)
+        opacity_slider.pack(side='left', fill='x', expand=True)
+        opacity_label.configure(text=f'{round(transparency.get())}%')
+        ttk.Label(frame, text='0% 为不透明；数值越大，壁纸越明显。', style='Muted.TLabel').grid(
+            row=6, column=0, columnspan=2, sticky='w')
+        ttk.Label(frame, text='文字也会一起变淡，仅影响主组件。', style='Muted.TLabel').grid(
+            row=7, column=0, columnspan=2, sticky='w', pady=(3, 0))
+        def restore_opacity(event):
+            if event.widget is win and self.root.winfo_exists():
+                self.root.attributes('-alpha', normalized_opacity(self.config.get('opacity', 1.0)))
+        win.bind('<Destroy>', restore_opacity, add='+')
         def commit():
             if self.write_busy:
                 messagebox.showinfo('正在保存', '请等待日程保存完成后再修改设置。', parent=win)
@@ -1949,6 +1981,7 @@ class App:
                 self.config['password'] = protect(password.get())
             self.config['desktop'] = desktop.get()
             self.config['autostart'] = autostart.get()
+            self.config['opacity'] = normalized_opacity(1.0 - round(transparency.get()) / 100)
             self.set_autostart(autostart.get())
             save_config(self.config)
             win.destroy()
@@ -1957,7 +1990,7 @@ class App:
             else:
                 self.detach_desktop()
             self.refresh()
-        ttk.Button(frame, text='保存并同步', style='Accent.TButton', command=commit).grid(row=5, column=1, sticky='e', pady=16)
+        ttk.Button(frame, text='保存并同步', style='Accent.TButton', command=commit).grid(row=8, column=1, sticky='e', pady=16)
         self.show_dialog(win, user)
 
     def show_dialog(self, win, focus_widget):
