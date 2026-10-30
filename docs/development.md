@@ -79,6 +79,12 @@ tests/run_checks.py     检查运行器
 
 桌面模式通过 Windows 前台窗口状态和窗口层级调整显示，不嵌入 Explorer。编辑与设置窗口打开期间暂停主窗口下沉。
 
+## 固定项跟踪
+
+近期同步额外按固定项的日历地址和 UID 发起不带时间范围的 `calendar-query`，同一 UID 在一次同步中只读取一次。单次日程跟随新开始时间和资源地址；重复实例通过 `RECURRENCE-ID` 跟踪，旧固定项从保存的原始 ICS 恢复实例标识。成功查询确认不存在或取消后移除；网络、权限、协议和解析错误保留原值并记录错误类型。结果仅在账户、同步请求和固定项快照仍匹配时应用，与近期列表一起持久化。
+
+协议参考：[RFC 4791 按 UID 查询](https://www.rfc-editor.org/rfc/rfc4791.html#section-7.8.6)。
+
 ## iCalendar 数据
 
 支持读取备注、多行转义、折行、时区、跨天事件、`DTEND` 和 `DURATION`。重复集合处理 `RRULE`、日期型 `RDATE`、多个 `EXDATE` 及单次改期或取消；查询范围内超过 5000 条重复实例时明确报错。
@@ -87,7 +93,7 @@ tests/run_checks.py     检查运行器
 
 - 重复日程或全天日程的编辑、事件删除。
 - `RANGE=THISANDFUTURE` 和 `RDATE;VALUE=PERIOD`，遇到时明确报错。
-- 固定项跨所有未读取月份主动追踪外部改期或删除。
+- 固定项跨日历移动，以及重复系列整体改期后的实例对应。
 - 服务器同步标记；当前仍需获取范围内的完整版本列表。
 
 格式参考：[RFC 5545](https://www.rfc-editor.org/rfc/rfc5545.html)。

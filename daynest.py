@@ -542,6 +542,38 @@ class CalDAV:
                           len(inventory), len(result) - downloaded, downloaded, gone)
         return list(result.values())
 
+    def pinned_resources(self, calendar_url, uid):
+        """Query a UID without a time range, including moved occurrences."""
+        query = ET.Element('{urn:ietf:params:xml:ns:caldav}calendar-query')
+        prop = ET.SubElement(query, '{DAV:}prop')
+        ET.SubElement(prop, '{DAV:}getetag')
+        ET.SubElement(prop, '{urn:ietf:params:xml:ns:caldav}calendar-data')
+        filter_node = ET.SubElement(query, '{urn:ietf:params:xml:ns:caldav}filter')
+        calendar = ET.SubElement(filter_node, '{urn:ietf:params:xml:ns:caldav}comp-filter', name='VCALENDAR')
+        event = ET.SubElement(calendar, '{urn:ietf:params:xml:ns:caldav}comp-filter', name='VEVENT')
+        uid_filter = ET.SubElement(event, '{urn:ietf:params:xml:ns:caldav}prop-filter', name='UID')
+        ET.SubElement(uid_filter, '{urn:ietf:params:xml:ns:caldav}text-match',
+                      collation='i;octet').text = uid
+        root = self.request('REPORT', calendar_url, ET.tostring(query, encoding='unicode'), '1')
+        if root.tag != '{DAV:}multistatus':
+            raise ValueError('固定项查询响应异常')
+        resources = []
+        for response in root.findall('d:response', NS):
+            status = response.findtext('d:status', default='', namespaces=NS)
+            if status and ' 200 ' not in status:
+                raise ValueError('固定项查询响应不完整')
+            href = response.findtext('d:href', namespaces=NS)
+            raw = etag = None
+            for propstat in response.findall('d:propstat', NS):
+                if ' 200 ' not in propstat.findtext('d:status', default='', namespaces=NS):
+                    raise ValueError('固定项内容读取失败')
+                raw = propstat.findtext('d:prop/c:calendar-data', default=raw, namespaces=NS)
+                etag = propstat.findtext('d:prop/d:getetag', default=etag, namespaces=NS)
+            if not href or not raw:
+                raise ValueError('固定项内容不完整')
+            resources.append({'href': urljoin(calendar_url, href), 'etag': etag, 'raw': raw})
+        return resources
+
     def put_event(self, href, raw, etag=None, create=False):
         parsed = urlparse(href)
         host = (parsed.hostname or '').lower().rstrip('.')
@@ -739,6 +771,9 @@ def parse_events(raw, calendar_name, range_start, range_end, resource=None, cale
                 if count > 5000:
                     raise ValueError('重复日程在查询范围内超过 5000 条，请缩小查询范围')
                 occurrence_meta = dict(meta, end=(occurrence + (end - begin)).isoformat())
+                if meta['recurring']:
+                    original = parse_ics_datetime(*event['RECURRENCE-ID'])[0] if 'RECURRENCE-ID' in event else occurrence
+                    occurrence_meta['recurrence_id'] = original.isoformat()
                 out.append((occurrence.astimezone(LOCAL_TZ), title, calendar_name, all_day, occurrence_meta))
     return out
 
@@ -846,6 +881,53 @@ def persistent_months(months, today=None):
 def event_key(event):
     meta = event[4] if len(event) > 4 else {}
     return f"{meta.get('href') or meta.get('uid') or event[1]}|{event[0].isoformat()}"
+
+
+def tracked_pin_event(pin, resources):
+    """Resolve exactly the pinned UID and recurrence instance from fresh data."""
+    previous = deserialize_events([pin['event']])[0]
+    meta = previous[4]
+    uid = meta['uid']
+    recurring = meta.get('recurring', False)
+    original = datetime.fromisoformat(meta.get('recurrence_id', pin['start']))
+    if recurring and not meta.get('recurrence_id') and meta.get('raw'):
+        # Recover the original identity of pins saved before recurrence_id existed.
+        old_events = parse_events(meta['raw'], previous[2], previous[0],
+                                  previous[0] + timedelta(microseconds=1))
+        old_match = next((event for event in old_events if event[0] == previous[0]
+                          and event[4]['uid'] == uid), None)
+        if old_match:
+            original = datetime.fromisoformat(old_match[4]['recurrence_id'])
+    matches = []
+    for resource in resources:
+        items = [item for item in event_properties(resource['raw']) if item.get('UID', ('',))[0] == uid]
+        if not items:
+            raise ValueError('固定项查询返回了其他 UID')
+        target = original
+        if not recurring:
+            active = [item for item in items if 'RECURRENCE-ID' not in item and 'DTSTART' in item
+                      and item.get('STATUS', ('',))[0] != 'CANCELLED']
+            if not active:
+                continue
+            target = parse_ics_datetime(*active[0]['DTSTART'])[0]
+        else:
+            override = next((item for item in items if 'RECURRENCE-ID' in item and
+                             parse_ics_datetime(*item['RECURRENCE-ID'])[0] == original), None)
+            if override is not None:
+                if override.get('STATUS', ('',))[0] == 'CANCELLED':
+                    continue
+                target = parse_ics_datetime(*override['DTSTART'])[0]
+        events = parse_events(resource['raw'], pin.get('calendar', previous[2]), target,
+                              target + timedelta(microseconds=1), resource, meta['calendar_url'])
+        for event in events:
+            if event[4]['uid'] != uid:
+                continue
+            if recurring and datetime.fromisoformat(event[4].get('recurrence_id', event[0].isoformat())) != original:
+                continue
+            matches.append(event)
+    if len(matches) > 1:
+        raise ValueError('固定项存在多个匹配事件')
+    return matches[0] if matches else None
 
 
 def events_on_day(events, day):
@@ -1029,7 +1111,7 @@ class App:
             self.listbox.yview_moveto(scroll[0])
 
     def render_pins(self):
-        signature = (date.today(), tuple((pin['key'], pin['title'], pin['start'], event_notes(self.pinned_event(pin)))
+        signature = (date.today(), tuple((pin['key'], pin['title'], pin['start'], repr(self.pinned_event(pin)))
                                          for pin in self.pins))
         if signature == getattr(self, 'pins_signature', None):
             return
@@ -1072,14 +1154,14 @@ class App:
                 widget.bind('<Button-1>', lambda _event, item=event: self.event_details(item))
 
     def pinned_event(self, pin):
+        if pin.get('event'):
+            return deserialize_events([pin['event']])[0]
         candidates = list(getattr(self, 'events', []))
         month = getattr(self, 'month_cache', {}).get(pin['start'][:7], {})
         candidates.extend(deserialize_events(month.get('events', [])))
         match = next((event for event in candidates if event_key(event) == pin['key']), None)
         if match:
             return match
-        if pin.get('event'):
-            return deserialize_events([pin['event']])[0]
         return (datetime.fromisoformat(pin['start']), pin['title'], pin.get('calendar', ''), False, {})
 
     def update_countdowns(self):
@@ -1144,6 +1226,7 @@ class App:
         resource_cache = self.resources()
         cached_calendars = list(self.cache.get('calendars', [])) if self.cache.get('username') == username else []
         cached_discovered_at = self.cache.get('discovered_at', 0)
+        pinned_snapshot = json.loads(json.dumps(getattr(self, 'pins', [])))
         self.status.config(text='正在从 iCloud 同步…')
         def run():
             log = get_logger()
@@ -1183,9 +1266,29 @@ class App:
                         errors.append(error)
                 if errors:
                     raise ValueError('部分日历读取失败：' + '；'.join(errors))
+                pin_updates, pin_resources = [], {}
+                for pin in pinned_snapshot:
+                    meta = pin.get('event', [None, None, None, None, {}])[4]
+                    if not meta.get('uid') or not meta.get('calendar_url'):
+                        continue
+                    identity = (meta['calendar_url'], meta['uid'])
+                    try:
+                        if identity not in pin_resources:
+                            try:
+                                pin_resources[identity] = client.pinned_resources(*identity)
+                            except Exception as error:
+                                pin_resources[identity] = error
+                        resources = pin_resources[identity]
+                        if isinstance(resources, Exception):
+                            raise resources
+                        pin_updates.append((pin, tracked_pin_event(pin, resources)))
+                    except CancelledError:
+                        raise
+                    except Exception as error:
+                        log.warning('pin sync failed error=%s', type(error).__name__)
                 elapsed = time.monotonic() - sync_start
                 log.info('sync complete calendars=%d events=%d elapsed=%.2fs', len(calendars), len(events), elapsed)
-                self.post(self.apply_sync, token, username, events, calendars, elapsed, discovered_at)
+                self.post(self.apply_sync, token, username, events, calendars, elapsed, discovered_at, pin_updates)
             except CancelledError:
                 return
             except Exception as e:
@@ -1193,10 +1296,23 @@ class App:
                 self.post(self.apply_sync_error, token, username, str(e))
         threading.Thread(target=run, daemon=True).start()
 
-    def apply_sync(self, token, username, events, calendars, elapsed, discovered_at):
+    def apply_sync(self, token, username, events, calendars, elapsed, discovered_at, pin_updates=None):
         if token is not self.sync_token or username != self.config.get('username'):
             return
+        for old_pin, event in pin_updates or []:
+            # Ignore a result if the user removed or edited this pin meanwhile.
+            if old_pin not in self.pins:
+                continue
+            index = self.pins.index(old_pin)
+            if event is None:
+                self.pins.pop(index)
+            else:
+                self.pins[index] = dict(old_pin, key=event_key(event), title=event[1],
+                                       start=event[0].isoformat(), calendar=event[2],
+                                       href=event[4].get('href'), event=serialize_events([event])[0])
         with self.cache_lock:
+            if pin_updates is not None:
+                self.cache['pins'] = self.pins
             self.cache.update(username=username, events=serialize_events(events), calendars=calendars,
                               synced_at=datetime.now(timezone.utc).isoformat(), discovered_at=discovered_at)
             self.cache['resource_cache'] = self.resources().snapshot()
@@ -1215,6 +1331,8 @@ class App:
         self.calendars = calendars
         self.render(events)
         self.render_pins()
+        if getattr(self, 'calendar_window', None) and self.calendar_window.winfo_exists():
+            self.update_pin_buttons()
         self.preload_months(date.today())
         if getattr(self, 'calendar_window', None) and self.calendar_window.winfo_exists():
             self.preload_months(self.calendar_month)
