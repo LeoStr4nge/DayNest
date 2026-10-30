@@ -20,7 +20,7 @@ import threading
 import time
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import messagebox, ttk
+from tkinter import colorchooser, messagebox, ttk
 import uuid
 import winreg
 from urllib.request import Request, urlopen
@@ -47,6 +47,61 @@ TEXT = '#e8eff7'
 MUTED = '#93a6b9'
 ACCENT = '#84d0ff'
 FILE_WRITE_LOCK = threading.Lock()
+
+
+THEMES = {
+    'midnight': ('午夜蓝', '#101923', '#1a2836', '#273c4e', '#e8eff7', '#93a6b9', '#84d0ff'),
+    'forest': ('松林绿', '#111e1b', '#1b302a', '#29473c', '#e7f2ec', '#99b8a9', '#8cdbb4'),
+    'plum': ('暮光紫', '#1b1726', '#2b243b', '#413553', '#eee9f7', '#b0a0c3', '#c8adff'),
+    'rose': ('暖玫瑰', '#23191e', '#35262e', '#503a46', '#f6e9ee', '#c3a0af', '#f2adc7'),
+    'paper': ('云雾白', '#f3f5f8', '#ffffff', '#e1e7ef', '#263445', '#65768a', '#326ca8'),
+    'sand': ('暖砂米', '#f5f0e7', '#fffcf5', '#e8ddcc', '#463c30', '#83735e', '#94612d'),
+}
+COLOR_ROLES = ('BG', 'CARD', 'HOVER', 'TEXT', 'MUTED', 'ACCENT',
+               'PRESSED', 'DISABLED', 'ACCENT_HOVER', 'ACCENT_PRESSED', 'ACCENT_TEXT', 'SELECTED', 'SCROLL_THUMB', 'ACCENT_INK')
+
+
+def mix_color(first, second, ratio):
+    return '#' + ''.join(f'{round(int(first[i:i + 2], 16) * (1 - ratio) + int(second[i:i + 2], 16) * ratio):02x}'
+                         for i in (1, 3, 5))
+
+
+def color_luminance(color):
+    channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in channels]
+    return sum(v * weight for v, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+
+
+def contrast_color(color):
+    return '#101923' if color_luminance(color) > 0.179 else '#ffffff'
+
+
+def theme_palette(theme='midnight', accent=None):
+    if not isinstance(theme, str):
+        theme = 'midnight'
+    values = THEMES.get(theme, THEMES['midnight'])[1:]
+    palette = dict(zip(COLOR_ROLES[:6], values))
+    if isinstance(accent, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', accent):
+        palette['ACCENT'] = accent.lower()
+    bg, card, hover, text, muted, accent = (palette[key] for key in COLOR_ROLES[:6])
+    # Keep accent text readable even when the user selects a very dark color.
+    palette.update(PRESSED=mix_color(hover, text, 0.12), DISABLED=mix_color(bg, muted, 0.65),
+                   ACCENT_HOVER=mix_color(accent, '#ffffff', 0.18),
+                   ACCENT_PRESSED=mix_color(accent, '#000000', 0.16),
+                   ACCENT_TEXT=contrast_color(accent), SELECTED=mix_color(card, accent, 0.28),
+                   SCROLL_THUMB=mix_color(hover, muted, 0.45))
+    ink = accent
+    for step in range(21):
+        ink = mix_color(accent, text, step / 20)
+        light, dark = sorted((color_luminance(ink), color_luminance(bg)), reverse=True)
+        if (light + 0.05) / (dark + 0.05) >= 4.5:
+            break
+    palette['ACCENT_INK'] = ink
+    return palette
+
+
+globals().update(theme_palette())
+
 
 
 class SingleInstance:
@@ -109,7 +164,8 @@ def main(restore_window=False):
         guard.close()
 
 
-def apply_theme(root):
+def apply_theme(root, theme='midnight', accent=None):
+    globals().update(theme_palette(theme, accent))
     for name in ('TkDefaultFont', 'TkTextFont', 'TkMenuFont'):
         tkfont.nametofont(name, root=root).configure(family='Microsoft YaHei UI', size=10)
     root.option_add('*TCombobox*Listbox.background', CARD)
@@ -119,6 +175,13 @@ def apply_theme(root):
     style.theme_use('clam')
     style.configure('.', background=BG, foreground=TEXT, font=('Microsoft YaHei UI', 10))
     style.configure('TFrame', background=BG)
+    style.configure('TNotebook', background=BG, borderwidth=0,
+                    bordercolor=HOVER, lightcolor=BG, darkcolor=BG)
+    style.configure('TNotebook.Tab', background=CARD, foreground=MUTED, padding=(16, 9),
+                    bordercolor=HOVER, lightcolor=CARD, darkcolor=CARD)
+    style.map('TNotebook.Tab', background=[('selected', HOVER), ('active', CARD)],
+              foreground=[('selected', ACCENT_INK), ('active', TEXT)])
+    style.configure('TSeparator', background=HOVER)
     style.configure('Card.TFrame', background=CARD)
     style.configure('TLabel', background=BG, foreground=TEXT)
     style.configure('Muted.TLabel', foreground=MUTED)
@@ -127,11 +190,11 @@ def apply_theme(root):
     style.configure('CardMuted.TLabel', background=CARD, foreground=MUTED)
     style.configure('TButton', background=CARD, foreground=TEXT, borderwidth=0,
                     padding=(12, 8), focusthickness=0)
-    style.map('TButton', background=[('active', HOVER), ('pressed', '#324b60')],
-              foreground=[('disabled', '#61788d')])
-    style.configure('Accent.TButton', background=ACCENT, foreground=BG)
-    style.map('Accent.TButton', background=[('active', '#b0e1ff'), ('pressed', '#5fb4e7')],
-              foreground=[('active', BG), ('pressed', BG)])
+    style.map('TButton', background=[('active', HOVER), ('pressed', PRESSED)],
+              foreground=[('disabled', DISABLED)])
+    style.configure('Accent.TButton', background=ACCENT, foreground=ACCENT_TEXT)
+    style.map('Accent.TButton', background=[('active', ACCENT_HOVER), ('pressed', ACCENT_PRESSED)],
+              foreground=[('active', ACCENT_TEXT), ('pressed', ACCENT_TEXT)])
     style.configure('TEntry', fieldbackground=CARD, foreground=TEXT, bordercolor=HOVER,
                     insertcolor=TEXT, padding=8, lightcolor=CARD, darkcolor=CARD)
     style.configure('TCombobox', fieldbackground=CARD, background=CARD, foreground=TEXT,
@@ -145,9 +208,57 @@ def apply_theme(root):
     style.map('TCheckbutton', background=[('active', BG)], indicatorbackground=[('selected', ACCENT)])
     style.configure('Vertical.TScrollbar', background=HOVER, troughcolor=BG,
                     bordercolor=BG, lightcolor=BG, darkcolor=BG, arrowcolor=MUTED, width=10)
+    style.configure('OpacityValue.TLabel', background=CARD, foreground=ACCENT_INK,
+                    font=('Microsoft YaHei UI', 10, 'bold'), padding=(8, 3))
+    # Image elements keep ttk's native dragging and keyboard behavior while
+    # replacing clam's raised rectangular handle with a soft circular thumb.
+    def blend(foreground, coverage):
+        channels = [round(int(BG[i:i + 2], 16) * (1 - coverage) +
+                          int(foreground[i:i + 2], 16) * coverage) for i in (1, 3, 5)]
+        return '#' + ''.join(f'{channel:02x}' for channel in channels)
+
+    def thumb(color, highlighted=False, image=None):
+        if image is None:
+            image = tk.PhotoImage(master=root, width=24, height=24)
+        for y in range(24):
+            colors = []
+            for x in range(24):
+                distance = ((x - 11.5) ** 2 + (y - 11.5) ** 2) ** 0.5
+                halo = max(0, min(1, 10 - distance)) if highlighted else 0
+                coverage = max(0, min(1, 7 - distance))
+                colors.append(blend(color, coverage) if coverage else blend(HOVER, halo))
+            image.put('{' + ' '.join(colors) + '}', to=(0, y))
+        return image
+
+    previous_images = getattr(root, 'opacity_style_images', None)
+    track = previous_images[0] if previous_images else tk.PhotoImage(master=root, width=12, height=6)
+    for y in range(6):
+        colors = []
+        for x in range(12):
+            dx = max(0, 2.5 - x, x - 8.5)
+            distance = (dx ** 2 + (y - 2.5) ** 2) ** 0.5
+            colors.append(blend(HOVER, max(0, min(1, 3 - distance))))
+        track.put('{' + ' '.join(colors) + '}', to=(0, y))
+    normal = thumb(ACCENT_INK, image=previous_images[1] if previous_images else None)
+    hover = thumb(ACCENT_HOVER, True, previous_images[2] if previous_images else None)
+    pressed = thumb(ACCENT_PRESSED, True, previous_images[3] if previous_images else None)
+    focus = thumb(ACCENT_INK, True, previous_images[4] if previous_images else None)
+    # PhotoImage objects must live as long as the theme elements.
+    root.opacity_style_images = (track, normal, hover, pressed, focus)
+    if 'DayNest.Opacity.slider' not in style.element_names():
+        style.element_create('DayNest.Opacity.trough', 'image', track,
+                             border=(4, 0, 4, 0), sticky='we')
+        style.element_create('DayNest.Opacity.slider', 'image', normal,
+                             ('pressed', pressed), ('active', hover), ('focus', focus))
+    style.layout('Opacity.Horizontal.TScale', [
+        ('DayNest.Opacity.trough', {'sticky': 'ew', 'children': [
+            ('DayNest.Opacity.slider', {'side': 'left', 'sticky': ''})]})])
+    style.configure('Opacity.Horizontal.TScale', background=BG)
 
 
-def flat_button(parent, text, command, bg=CARD, fg=TEXT, **kwargs):
+
+def flat_button(parent, text, command, bg=None, fg=None, **kwargs):
+    bg, fg = bg or CARD, fg or TEXT
     button = tk.Button(parent, text=text, command=command, bg=bg, fg=fg,
                        activebackground=HOVER, activeforeground=TEXT, relief='flat',
                        bd=0, highlightthickness=0, cursor='hand2', **kwargs)
@@ -167,7 +278,8 @@ def dialog_header(win, title, subtitle):
 
 class SlimScrollbar(tk.Canvas):
     """A fixed gutter with a dark thumb; no native arrows or disabled track."""
-    def __init__(self, parent, command, bg=BG):
+    def __init__(self, parent, command, bg=None):
+        bg = bg or BG
         super().__init__(parent, width=10, bg=bg, highlightthickness=0, bd=0)
         self.command = command
         self.first, self.last = 0.0, 1.0
@@ -199,7 +311,7 @@ class SlimScrollbar(tk.Canvas):
         self.configure(cursor='hand2')
         top, size, _ = self.geometry_values()
         self.create_line(5, top + 3, 5, top + size - 3, width=6 if self.hover else 4,
-                         capstyle='round', fill=MUTED if self.hover else '#486176', tags='thumb')
+                         capstyle='round', fill=MUTED if self.hover else SCROLL_THUMB, tags='thumb')
 
     def set_hover(self, value):
         self.hover = value
@@ -284,13 +396,17 @@ def normalized_opacity(value):
 
 
 def load_config():
-    defaults = {'username': '', 'password': '', 'x': 60, 'y': 60, 'desktop': True, 'opacity': 1.0}
+    defaults = {'username': '', 'password': '', 'x': 60, 'y': 60, 'desktop': True, 'opacity': 1.0, 'theme': 'midnight', 'accent': None}
     try:
         stored = json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
         if isinstance(stored, dict):
             defaults.update(stored)
     except (OSError, ValueError):
         pass
+    if not isinstance(defaults['theme'], str) or defaults['theme'] not in THEMES:
+        defaults['theme'] = 'midnight'
+    if not isinstance(defaults['accent'], str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', defaults['accent']):
+        defaults['accent'] = None
     defaults['opacity'] = normalized_opacity(defaults['opacity'])
     return defaults
 
@@ -408,7 +524,7 @@ class CalDAV:
         host = (parsed.hostname or '').lower().rstrip('.')
         allowed = host.endswith('.icloud.com') or host.endswith('.icloud.com.cn')
         if parsed.scheme != 'https' or not allowed:
-            raise ValueError(f'只允许连接 iCloud 的 HTTPS 地址；当前服务器：{host or "空"}')
+            raise ValueError(f'当前连接配置仅允许 iCloud 的 HTTPS 地址；当前服务器：{host or "空"}')
         headers = {'Authorization': self.auth, 'Content-Type': 'application/xml; charset=utf-8', 'Depth': depth}
         req = Request(url, data=xml.encode('utf-8'), headers=headers, method=method)
         for attempt in range(3):
@@ -419,15 +535,15 @@ class CalDAV:
                     return ET.fromstring(response.read())
             except HTTPError as e:
                 if e.code == 401:
-                    raise ValueError('认证失败：请检查 Apple 账户邮箱和 App 专用密码') from e
+                    raise ValueError('认证失败：请检查日历账户和密码，部分服务需要使用应用专用密码') from e
                 if e.code not in (429, 502, 503, 504) or attempt == 2:
-                    raise ValueError(f'iCloud 返回 HTTP {e.code}') from e
+                    raise ValueError(f'日历服务返回 HTTP {e.code}') from e
                 retry_error = f'HTTP{e.code}'
             except (URLError, ssl.SSLError, TimeoutError, ConnectionError, IncompleteRead) as e:
                 if not transient_read_error(e):
                     raise
                 if attempt == 2:
-                    raise ValueError('iCloud 连接中断，自动重试后仍未恢复，请稍后刷新') from e
+                    raise ValueError('日历服务连接中断，自动重试后仍未恢复，请稍后刷新') from e
                 retry_error = type(e.reason if isinstance(e, URLError) else e).__name__
             delay = attempt + 1
             get_logger().warning('read retry method=%s attempt=%d/3 error=%s delay=%ds',
@@ -446,11 +562,11 @@ class CalDAV:
         root = self.propfind(base, '<d:current-user-principal/>')
         principal = root.find('.//d:current-user-principal/d:href', NS)
         if principal is None or not principal.text:
-            raise ValueError('iCloud 未返回用户日历地址')
+            raise ValueError('日历服务未返回用户日历地址')
         root = self.propfind(urljoin(base, principal.text), '<c:calendar-home-set/>')
         home = root.find('.//c:calendar-home-set/d:href', NS)
         if home is None or not home.text:
-            raise ValueError('iCloud 未返回日历目录')
+            raise ValueError('日历服务未返回日历目录')
         home_url = urljoin(base, home.text)
         root = self.propfind(home_url, '<d:resourcetype/><d:displayname/><c:supported-calendar-component-set/>', '1')
         result = []
@@ -477,24 +593,24 @@ class CalDAV:
                 '</c:comp-filter></c:comp-filter></c:filter></c:calendar-query>')
         root = self.request('REPORT', calendar_url, body, '1')
         if root.tag != '{DAV:}multistatus':
-            raise ValueError('iCloud 日程列表响应异常，保留原缓存')
+            raise ValueError('日历服务的日程列表响应异常，保留原缓存')
         inventory = {}
         for response in root.findall('d:response', NS):
             href = response.find('d:href', NS)
             if href is None or not href.text:
-                raise ValueError('iCloud 日程列表缺少资源地址，保留原缓存')
+                raise ValueError('日历服务的日程列表缺少资源地址，保留原缓存')
             status = response.findtext('d:status', default='', namespaces=NS)
             if ' 404 ' in status or ' 410 ' in status:
                 continue
             if status and ' 200 ' not in status:
-                raise ValueError('iCloud 日程列表返回不完整，保留原缓存')
+                raise ValueError('日历服务的日程列表返回不完整，保留原缓存')
             etag = None
             for propstat in response.findall('d:propstat', NS):
                 status = propstat.findtext('d:status', default='', namespaces=NS)
                 if ' 200 ' in status:
                     etag = propstat.findtext('d:prop/d:getetag', namespaces=NS)
                 elif ' 404 ' not in status:
-                    raise ValueError('iCloud 日程版本读取失败，保留原缓存')
+                    raise ValueError('日历服务的日程版本读取失败，保留原缓存')
             inventory[urljoin(calendar_url, href.text)] = etag
         result, downloaded, gone = {}, 0, 0
         # Separate download locks from the short-lived data lock so snapshots
@@ -519,13 +635,13 @@ class CalDAV:
                         '?' + parsed_href.query if parsed_href.query else '')
                 data = self.request('REPORT', calendar_url, ET.tostring(query, encoding='unicode'), '1')
                 if data.tag != '{DAV:}multistatus':
-                    raise ValueError('iCloud 日程内容响应异常，保留原缓存')
+                    raise ValueError('日历服务的日程内容响应异常，保留原缓存')
                 seen = set()
                 for response in data.findall('d:response', NS):
                     href_text = response.findtext('d:href', namespaces=NS)
                     href = urljoin(calendar_url, href_text) if href_text else None
                     if href not in batch:
-                        raise ValueError('iCloud 日程内容响应与请求不匹配')
+                        raise ValueError('日历服务的日程内容响应与请求不匹配')
                     seen.add(href)
                     status = response.findtext('d:status', default='', namespaces=NS)
                     if ' 404 ' in status or ' 410 ' in status:
@@ -533,7 +649,7 @@ class CalDAV:
                         gone += 1
                         continue
                     if status and ' 200 ' not in status:
-                        raise ValueError('iCloud 日程内容读取失败，保留原缓存')
+                        raise ValueError('日历服务的日程内容读取失败，保留原缓存')
                     raw, etag = None, None
                     for propstat in response.findall('d:propstat', NS):
                         status = propstat.findtext('d:status', default='', namespaces=NS)
@@ -541,11 +657,11 @@ class CalDAV:
                             raw = propstat.findtext('d:prop/c:calendar-data', default=raw, namespaces=NS)
                             etag = propstat.findtext('d:prop/d:getetag', default=etag, namespaces=NS)
                     if raw is None:
-                        raise ValueError('iCloud 未返回完整日程内容，保留原缓存')
+                        raise ValueError('日历服务未返回完整日程内容，保留原缓存')
                     result[href] = {'href': href, 'raw': raw, 'etag': etag}
                     downloaded += 1
                 if seen != set(batch):
-                    raise ValueError('iCloud 部分日程未返回，保留原缓存')
+                    raise ValueError('日历服务的部分日程未返回，保留原缓存')
             self.resource_cache.store(calendar_url, list(result.values()), start, end)
         get_logger().info('resource sync listed=%d reused=%d downloaded=%d gone=%d',
                           len(inventory), len(result) - downloaded, downloaded, gone)
@@ -587,7 +703,7 @@ class CalDAV:
         parsed = urlparse(href)
         host = (parsed.hostname or '').lower().rstrip('.')
         if parsed.scheme != 'https' or not (host.endswith('.icloud.com') or host.endswith('.icloud.com.cn')):
-            raise ValueError('拒绝向非 iCloud 地址写入')
+            raise ValueError('当前连接配置不允许向非 iCloud 地址写入')
         headers = {'Authorization': self.auth, 'Content-Type': 'text/calendar; charset=utf-8'}
         if create:
             headers['If-None-Match'] = '*'
@@ -603,8 +719,8 @@ class CalDAV:
             if e.code == 412:
                 raise ValueError('这条日程已在其他设备上修改，请刷新后重试') from e
             if e.code in (401, 403):
-                raise ValueError('iCloud 拒绝写入：请确认该日历允许编辑') from e
-            raise ValueError(f'iCloud 写入失败：HTTP {e.code}') from e
+                raise ValueError('日历服务拒绝写入：请确认该日历允许编辑') from e
+            raise ValueError(f'日历服务写入失败：HTTP {e.code}') from e
 
 
 def parallel_results(function, arguments, cancel, max_workers=4):
@@ -989,7 +1105,7 @@ class App:
         self.desktop_raised = False
         self.modal_windows = set()
         self.root = tk.Tk()
-        apply_theme(self.root)
+        apply_theme(self.root, self.config.get('theme', 'midnight'), self.config.get('accent'))
         self.root.title(APP_NAME)
         self.root.overrideredirect(self.config.get('desktop', True))
         self.root.geometry(f"360x580+{self.config.get('x',60)}+{self.config.get('y',60)}")
@@ -1113,7 +1229,7 @@ class App:
             else:
                 self.listbox.insert('end', '  无日程\n')
             self.listbox.insert('end', '\n')
-        self.listbox.tag_config('heading', foreground=ACCENT, font=('Microsoft YaHei UI', 11, 'bold'))
+        self.listbox.tag_config('heading', foreground=ACCENT_INK, font=('Microsoft YaHei UI', 11, 'bold'))
         self.listbox.tag_config('notes', foreground=MUTED, font=('Microsoft YaHei UI', 9))
         self.listbox.tag_raise('notes')
         self.listbox.configure(state='disabled')
@@ -1149,7 +1265,7 @@ class App:
             title_label = tk.Label(row, text=pin['title'], bg=CARD, fg=TEXT, anchor='w', wraplength=255,
                                    font=('Microsoft YaHei UI', 10))
             title_label.pack(fill='x')
-            countdown_label = tk.Label(row, text=countdown, bg=CARD, fg=ACCENT, anchor='w',
+            countdown_label = tk.Label(row, text=countdown, bg=CARD, fg=ACCENT_INK, anchor='w',
                                        font=('Microsoft YaHei UI', 16, 'bold'))
             countdown_label.pack(fill='x', pady=(3, 0))
             clickable = [row, title_label, countdown_label]
@@ -1237,7 +1353,7 @@ class App:
         cached_calendars = list(self.cache.get('calendars', [])) if self.cache.get('username') == username else []
         cached_discovered_at = self.cache.get('discovered_at', 0)
         pinned_snapshot = json.loads(json.dumps(getattr(self, 'pins', [])))
-        self.status.config(text='正在从 iCloud 同步…')
+        self.status.config(text='正在同步日历…')
         def run():
             log = get_logger()
             sync_start = time.monotonic()
@@ -1461,7 +1577,7 @@ class App:
             return
         if not self.config.get('username') or not self.config.get('password') or not self.calendars:
             if getattr(self, 'calendar_window', None) and self.calendar_window.winfo_exists():
-                self.calendar_status.configure(text='请先完成 iCloud 同步。')
+                self.calendar_status.configure(text='请先完成日历同步。')
             return
         self.month_loading.add(key)
         self.refresh_month_view(key)
@@ -1562,18 +1678,18 @@ class App:
         elif events is None:
             self.calendar_status.configure(text='此月份尚未读取。')
         else:
-            self.calendar_status.configure(text=f'本月 {len(events)} 条日程 · 蓝色横条表示有日程')
+            self.calendar_status.configure(text=f'本月 {len(events)} 条日程 · 彩色横条表示有日程')
         self.draw_day_details()
 
     def style_calendar_cell(self, cell):
         day = cell['day']
         selected = day is not None and day == self.calendar_day
-        bg = BG if day is None else ('#345b78' if selected else CARD)
-        fg = ACCENT if day == date.today() else (MUTED if cell['weekend'] else TEXT)
+        bg = BG if day is None else (SELECTED if selected else CARD)
+        fg = ACCENT_INK if day == date.today() else (MUTED if cell['weekend'] else TEXT)
         cell['button'].rest_bg = bg
         cell['button'].configure(bg=bg, fg=fg, activebackground=HOVER if day else BG,
                                  font=('Microsoft YaHei UI', 12, 'bold' if selected or day == date.today() else 'normal'))
-        cell['marker'].configure(bg=ACCENT if cell['has_events'] else bg)
+        cell['marker'].configure(bg=ACCENT_INK if cell['has_events'] else bg)
 
     def select_calendar_day(self, day):
         if day is None or day == self.calendar_day:
@@ -1609,7 +1725,7 @@ class App:
             row = ttk.Frame(self.calendar_details, style='Card.TFrame', padding=16)
             row.pack(fill='x', pady=(0, 12))
             when = '全天' if event[3] else event[0].strftime('%H:%M')
-            ttk.Label(row, text=when, background=CARD, foreground=ACCENT,
+            ttk.Label(row, text=when, background=CARD, foreground=ACCENT_INK,
                       font=('Microsoft YaHei UI', 12, 'bold')).pack(anchor='w')
             title_label = ttk.Label(row, text=event[1], style='Card.TLabel', wraplength=265,
                                     font=('Microsoft YaHei UI', 11, 'bold'), justify='left', cursor='hand2')
@@ -1661,7 +1777,7 @@ class App:
             when = start.strftime('%Y年%m月%d日 %H:%M')
             if end:
                 when += ' — ' + end.strftime('%H:%M' if end.date() == start.date() else '%m月%d日 %H:%M')
-        ttk.Label(header, text=when, foreground=ACCENT).pack(anchor='w', pady=(14, 5))
+        ttk.Label(header, text=when, foreground=ACCENT_INK).pack(anchor='w', pady=(14, 5))
         ttk.Label(header, text=event[2], style='Muted.TLabel').pack(anchor='w')
         actions = ttk.Frame(win, padding=(24, 14, 24, 20))
         actions.pack(side='bottom', fill='x')
@@ -1696,10 +1812,10 @@ class App:
             messagebox.showinfo('请先刷新', '这条缓存日程缺少服务器版本信息，请先点 ↻ 同步。', parent=self.root)
             return
         if editing and (selected[3] or meta.get('recurring')):
-            messagebox.showinfo('暂不支持', '当前仅支持修改单次、非全天日程。重复日程请在 iCloud 日历中修改。', parent=self.root)
+            messagebox.showinfo('暂不支持', '当前仅支持修改单次、非全天日程。重复日程请在对应的日历服务中修改。', parent=self.root)
             return
         if not editing and not self.calendars:
-            messagebox.showinfo('请先同步', '请先连接 iCloud 并同步日历。', parent=self.root)
+            messagebox.showinfo('请先同步', '请先设置日历账户并同步日历。', parent=self.root)
             return
         win = tk.Toplevel(self.root)
         win.title('修改日程' if editing else '添加日程')
@@ -1807,8 +1923,8 @@ class App:
                     if day_number:
                         day = date(current.year, current.month, day_number)
                         button = flat_button(days, str(day_number), lambda d=day: choose_day(d), width=4, pady=4,
-                                             bg='#345b78' if day == selected_day else CARD,
-                                             fg=ACCENT if day == selected_day else TEXT)
+                                             bg=SELECTED if day == selected_day else CARD,
+                                             fg=ACCENT_INK if day == selected_day else TEXT)
                         button.grid(row=row, column=col, padx=2, pady=2)
 
         ttk.Button(nav, text='‹', width=4, command=lambda: shift_month(-1)).grid(row=0, column=0)
@@ -1851,7 +1967,7 @@ class App:
                 etag = None
             self.write_busy = True
             username, password = self.config['username'], self.config['password']
-            self.status.config(text='正在保存到 iCloud…')
+            self.status.config(text='正在保存到日历…')
             def run_write():
                 try:
                     client = CalDAV(username, unprotect(password))
@@ -1904,25 +2020,81 @@ class App:
             threading.Thread(target=run_write, daemon=True).start()
 
         ttk.Button(footer, text='取消', command=win.destroy).pack(side='right')
-        ttk.Button(footer, text='保存到 iCloud', style='Accent.TButton', command=save).pack(side='right', padx=8)
+        ttk.Button(footer, text='保存到日历', style='Accent.TButton', command=save).pack(side='right', padx=8)
         self.show_dialog(win, title)
+
+    def preview_theme(self, theme, accent=None):
+        previous = {role: globals()[role] for role in COLOR_ROLES}
+        apply_theme(self.root, theme, accent)
+        replacements = {}
+        for role, color in previous.items():
+            replacements.setdefault(color.lower(), globals()[role])
+
+        def recolor(widget):
+            if not widget.winfo_exists():
+                return
+            options = widget.keys()
+            for option in ('background', 'foreground', 'activebackground', 'activeforeground',
+                           'insertbackground', 'selectbackground', 'selectforeground',
+                           'highlightbackground', 'highlightcolor', 'disabledforeground'):
+                if option in options:
+                    color = str(widget.cget(option)).lower()
+                    if color in replacements:
+                        widget.configure(**{option: replacements[color]})
+            if hasattr(widget, 'rest_bg'):
+                widget.rest_bg = replacements.get(widget.rest_bg.lower(), widget.rest_bg)
+            if isinstance(widget, tk.Text):
+                for tag in widget.tag_names():
+                    for option in ('background', 'foreground'):
+                        color = str(widget.tag_cget(tag, option)).lower()
+                        if color in replacements:
+                            widget.tag_configure(tag, **{option: replacements[color]})
+            if isinstance(widget, tk.Canvas):
+                for item in widget.find_all():
+                    for option in ('fill', 'outline'):
+                        try:
+                            color = str(widget.itemcget(item, option)).lower()
+                        except tk.TclError:
+                            continue
+                        if color in replacements:
+                            widget.itemconfigure(item, **{option: replacements[color]})
+            if isinstance(widget, (tk.Tk, tk.Toplevel)):
+                try:
+                    outer = ctypes.windll.user32.GetParent(widget.winfo_id())
+                    dark = ctypes.c_int(contrast_color(BG) == '#ffffff')
+                    ctypes.windll.dwmapi.DwmSetWindowAttribute(wintypes.HWND(outer), 20, ctypes.byref(dark), ctypes.sizeof(dark))
+                except (AttributeError, OSError):
+                    pass
+            for child in widget.winfo_children():
+                recolor(child)
+        recolor(self.root)
 
     def settings(self):
         win = tk.Toplevel(self.root)
-        win.title('设置 iCloud 日历')
-        win.geometry('550x500')
+        win.title('设置 · DayNest')
+        win.geometry('550x600')
         win.resizable(False, False)
-        dialog_header(win, '设置', '连接 iCloud，让日程陪伴你的桌面。')
-        frame = ttk.Frame(win, padding=24)
-        frame.pack(fill='both', expand=True)
-        ttk.Label(frame, text='Apple 账户邮箱').grid(row=0, column=0, sticky='w', pady=7)
+        dialog_header(win, '设置', '连接你的日历，让日程陪伴你的桌面。')
+        body = ttk.Frame(win, padding=(24, 16, 24, 0))
+        body.pack(fill='both', expand=True)
+        tabs = ttk.Notebook(body)
+        tabs.pack(fill='both', expand=True)
+        account_frame = ttk.Frame(tabs, padding=12)
+        appearance_frame = ttk.Frame(tabs, padding=12)
+        appearance_frame.columnconfigure(1, weight=1)
+        account_frame.columnconfigure(1, weight=1)
+        tabs.add(appearance_frame, text='外观与个性化')
+        tabs.add(account_frame, text='日历账户')
+        frame = account_frame
+        ttk.Label(frame, text='账户名或邮箱').grid(row=0, column=0, sticky='w', pady=7)
         user = ttk.Entry(frame, width=35)
-        user.grid(row=0, column=1, pady=7)
+        user.grid(row=0, column=1, pady=7, sticky='ew')
         user.insert(0, self.config.get('username', ''))
-        ttk.Label(frame, text='App 专用密码').grid(row=1, column=0, sticky='w', pady=7)
+        ttk.Label(frame, text='日历密码').grid(row=1, column=0, sticky='w', pady=7)
         password = ttk.Entry(frame, width=35, show='•')
-        password.grid(row=1, column=1, pady=7)
-        ttk.Label(frame, text='留空表示保留已保存的密码', style='Muted.TLabel').grid(row=2, column=1, sticky='w')
+        password.grid(row=1, column=1, pady=7, sticky='ew')
+        ttk.Label(frame, text='留空保留原密码；部分服务需要应用专用密码', style='Muted.TLabel').grid(row=2, column=1, sticky='w')
+        frame = appearance_frame
         desktop = tk.BooleanVar(value=self.config.get('desktop', True))
         ttk.Checkbutton(frame, text='固定在桌面层（Win + D 时仍可见）', variable=desktop).grid(row=3, column=0, columnspan=2, sticky='w', pady=14)
         autostart = tk.BooleanVar(value=self.config.get('autostart', False))
@@ -1931,37 +2103,99 @@ class App:
         transparency = tk.DoubleVar(value=round((1.0 - normalized_opacity(self.config.get('opacity', 1.0))) * 100))
         opacity_frame = ttk.Frame(frame)
         opacity_frame.grid(row=5, column=1, sticky='ew', pady=(18, 5))
-        opacity_label = ttk.Label(opacity_frame, width=5, anchor='e')
-        opacity_label.pack(side='right')
+        opacity_label = ttk.Label(opacity_frame, width=4, anchor='center', style='OpacityValue.TLabel')
+        opacity_label.pack(side='right', padx=(12, 0))
         def preview_opacity(value):
             percent = round(float(value))
             opacity_label.configure(text=f'{percent}%')
             self.root.attributes('-alpha', normalized_opacity(1.0 - percent / 100))
         opacity_slider = ttk.Scale(opacity_frame, from_=0, to=60, variable=transparency,
-                                   command=preview_opacity)
+                                   command=preview_opacity, style='Opacity.Horizontal.TScale',
+                                   cursor='hand2', takefocus=True)
         opacity_slider.pack(side='left', fill='x', expand=True)
         opacity_label.configure(text=f'{round(transparency.get())}%')
         ttk.Label(frame, text='0% 为不透明；数值越大，壁纸越明显。', style='Muted.TLabel').grid(
             row=6, column=0, columnspan=2, sticky='w')
         ttk.Label(frame, text='文字也会一起变淡，仅影响主组件。', style='Muted.TLabel').grid(
             row=7, column=0, columnspan=2, sticky='w', pady=(3, 0))
+        tk.Frame(frame, bg=HOVER, height=1).grid(row=8, column=0, columnspan=2, sticky='ew', pady=(18, 10))
+        ttk.Label(frame, text='界面主题').grid(row=9, column=0, sticky='w', pady=5)
+        theme_keys = list(THEMES)
+        current_theme = self.config.get('theme', 'midnight')
+        if current_theme not in THEMES:
+            current_theme = 'midnight'
+        theme_choice = ttk.Combobox(frame, state='readonly', width=28,
+                                    values=[THEMES[key][0] for key in theme_keys])
+        theme_choice.current(theme_keys.index(current_theme))
+        theme_choice.grid(row=9, column=1, sticky='ew', pady=5)
+        custom_accent = tk.StringVar(value=self.config.get('accent') or '')
+        ttk.Label(frame, text='主题颜色').grid(row=10, column=0, sticky='w', pady=7)
+        accent_row = ttk.Frame(frame)
+        accent_row.grid(row=10, column=1, sticky='ew', pady=7)
+        def selected_theme():
+            return theme_keys[theme_choice.current()]
+        def refresh_accent_button():
+            color = theme_palette(selected_theme(), custom_accent.get())['ACCENT']
+            accent_button.configure(bg=color, fg=contrast_color(color), activebackground=color,
+                                    activeforeground=contrast_color(color), text=f'  {color.upper()}  ')
+        def preview_colors():
+            self.preview_theme(selected_theme(), custom_accent.get())
+            refresh_accent_button()
+        def choose_accent():
+            color = theme_palette(selected_theme(), custom_accent.get())['ACCENT']
+            chosen = colorchooser.askcolor(color=color, title='选择主题颜色', parent=win)[1]
+            if chosen:
+                custom_accent.set(chosen)
+                preview_colors()
+        accent_button = tk.Button(accent_row, command=choose_accent, relief='flat', bd=0,
+                                  font=('Microsoft YaHei UI', 10, 'bold'), padx=8, pady=6, cursor='hand2')
+        accent_button.pack(side='left')
+        def reset_accent():
+            custom_accent.set('')
+            preview_colors()
+        ttk.Button(accent_row, text='恢复默认色', command=reset_accent).pack(side='right')
+        theme_choice.bind('<<ComboboxSelected>>', lambda _event: reset_accent())
+        refresh_accent_button()
+        ttk.Label(frame, text='即时预览，保存后下次启动沿用。', style='Muted.TLabel').grid(
+            row=11, column=0, columnspan=2, sticky='w', pady=(2, 0))
         def restore_opacity(event):
             if event.widget is win and self.root.winfo_exists():
                 self.root.attributes('-alpha', normalized_opacity(self.config.get('opacity', 1.0)))
+                self.preview_theme(self.config.get('theme', 'midnight'), self.config.get('accent'))
         win.bind('<Destroy>', restore_opacity, add='+')
+        def save_appearance():
+            if self.write_busy:
+                messagebox.showinfo('正在保存', '请等待日程保存完成后再修改设置。', parent=win)
+                return
+            self.config['desktop'] = desktop.get()
+            self.config['autostart'] = autostart.get()
+            self.config['opacity'] = normalized_opacity(1.0 - round(transparency.get()) / 100)
+            self.config['theme'] = selected_theme()
+            self.config['accent'] = custom_accent.get() or None
+            self.set_autostart(autostart.get())
+            save_config(self.config)
+            win.destroy()
+            if desktop.get():
+                self.attach_desktop()
+            else:
+                self.detach_desktop()
+
         def commit():
             if self.write_busy:
                 messagebox.showinfo('正在保存', '请等待日程保存完成后再修改设置。', parent=win)
                 return
             if not user.get().strip():
-                messagebox.showerror('缺少邮箱', '请输入 Apple 账户邮箱', parent=win)
+                tabs.select(account_frame)
+                messagebox.showerror('缺少账户', '请输入日历账户名或邮箱', parent=win)
                 return
             account_changed = self.config.get('username') != user.get().strip()
             if account_changed and not password.get():
-                messagebox.showerror('缺少密码', '更换 Apple 账户时，请输入新账户的 App 专用密码。', parent=win)
+                tabs.select(account_frame)
+                messagebox.showerror('缺少密码', '更换日历账户时，请输入新账户的日历密码。', parent=win)
                 return
             if not password.get() and not self.config.get('password'):
-                messagebox.showerror('缺少密码', '请输入 App 专用密码', parent=win)
+                tabs.select(account_frame)
+                messagebox.showerror('缺少密码', '请输入日历密码；如果服务要求，请使用应用专用密码', parent=win)
                 return
             self.config['username'] = user.get().strip()
             self.sync_token = None
@@ -1979,19 +2213,13 @@ class App:
                     save_cache(self.cache)
             if password.get():
                 self.config['password'] = protect(password.get())
-            self.config['desktop'] = desktop.get()
-            self.config['autostart'] = autostart.get()
-            self.config['opacity'] = normalized_opacity(1.0 - round(transparency.get()) / 100)
-            self.set_autostart(autostart.get())
-            save_config(self.config)
-            win.destroy()
-            if desktop.get():
-                self.attach_desktop()
-            else:
-                self.detach_desktop()
+            save_appearance()
             self.refresh()
-        ttk.Button(frame, text='保存并同步', style='Accent.TButton', command=commit).grid(row=8, column=1, sticky='e', pady=16)
-        self.show_dialog(win, user)
+        footer = ttk.Frame(win, padding=(24, 10, 24, 20))
+        footer.pack(fill='x')
+        ttk.Button(footer, text='保存外观', command=save_appearance).pack(side='left')
+        ttk.Button(footer, text='保存并同步', style='Accent.TButton', command=commit).pack(side='right')
+        self.show_dialog(win, theme_choice)
 
     def show_dialog(self, win, focus_widget):
         win.configure(bg=BG)
@@ -2002,7 +2230,7 @@ class App:
         win.geometry(f'+{x}+{y}')
         try:
             outer = ctypes.windll.user32.GetParent(win.winfo_id())
-            dark = ctypes.c_int(1)
+            dark = ctypes.c_int(contrast_color(BG) == '#ffffff')
             ctypes.windll.dwmapi.DwmSetWindowAttribute(wintypes.HWND(outer), 20, ctypes.byref(dark), ctypes.sizeof(dark))
         except (AttributeError, OSError):
             pass

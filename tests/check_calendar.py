@@ -50,7 +50,7 @@ other_day = today.replace(day=1 if today.day != 1 else 2)
 app.select_calendar_day(other_day)
 root.update()
 assert original_buttons == [cell['button'].winfo_id() for cell in app.calendar_cells]
-assert app.calendar_day_cells[other_day]['button'].rest_bg == '#345b78'
+assert app.calendar_day_cells[other_day]['button'].rest_bg == module.SELECTED
 assert app.calendar_day_cells[today]['button'].rest_bg == module.CARD
 app.select_calendar_day(today)
 root.update()

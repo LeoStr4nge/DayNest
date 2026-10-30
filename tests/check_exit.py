@@ -41,7 +41,7 @@ def child(source, mode):
                     yield from descendants(widget_child)
             widgets = list(descendants(dialog))
             next(w for w in widgets if isinstance(w, m.ttk.Entry)).insert(0, 'Exit test')
-            next(w for w in widgets if isinstance(w, m.ttk.Button) and w.cget('text') == '保存到 iCloud').invoke()
+            next(w for w in widgets if isinstance(w, m.ttk.Button) and w.cget('text') == '保存到日历').invoke()
             app.close()
             assert app.close_requested and not app.closed.is_set()
         else:

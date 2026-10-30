@@ -43,7 +43,7 @@ with patch.object(m, 'load_config', return_value={'username': 'test', 'password'
     title.insert(0, '队列写入测试')
     notes = next(w for w in widgets if isinstance(w, m.tk.Text))
     notes.insert('1.0', '验证写入后刷新与缓存更新')
-    button = next(w for w in widgets if isinstance(w, m.ttk.Button) and w.cget('text') == '保存到 iCloud')
+    button = next(w for w in widgets if isinstance(w, m.ttk.Button) and w.cget('text') == '保存到日历')
     button.invoke()
     app.root.after(700, app.root.quit)
     app.root.mainloop()

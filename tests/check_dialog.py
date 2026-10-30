@@ -31,7 +31,7 @@ next_button = next(child for child in descendants(dialog)
 next_button.invoke()  # November 2026 requires six calendar rows.
 root.update()
 save_button = next(child for child in descendants(dialog)
-                   if isinstance(child, module.ttk.Button) and child.cget('text') == '保存到 iCloud')
+                   if isinstance(child, module.ttk.Button) and child.cget('text') == '保存到日历')
 assert save_button.winfo_rooty() + save_button.winfo_height() <= dialog.winfo_rooty() + dialog.winfo_height()
 dialog.destroy()
 root.update()

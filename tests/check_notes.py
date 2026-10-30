@@ -77,7 +77,7 @@ editor = next(child for child in descendants(dialog) if isinstance(child, tk.Tex
 assert editor.get('1.0', 'end-1c') == description
 editor.delete('1.0', 'end')
 editor.insert('1.0', '从编辑表单保存的备注\n第二行')
-save = next(child for child in descendants(dialog) if isinstance(child, m.ttk.Button) and child.cget('text') == '保存到 iCloud')
+save = next(child for child in descendants(dialog) if isinstance(child, m.ttk.Button) and child.cget('text') == '保存到日历')
 with patch.object(m.CalDAV, 'put_event') as put, patch.object(m, 'unprotect', return_value='test'), \
      patch.object(m, 'get_logger', return_value=MagicMock()), \
      patch.object(m.threading, 'Thread', side_effect=lambda target, daemon: SimpleNamespace(start=target)):
