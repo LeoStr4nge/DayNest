@@ -13,6 +13,10 @@ DayNest.pyw             图形启动入口
 daynest.py              主程序、同步、缓存和界面
 RestoreWindow.pyw       关闭桌面模式并重新启动
 requirements.txt        Python 依赖
+requirements-build.txt  打包和图标生成依赖
+assets/                 程序图标与源图形
+packaging/              PyInstaller、Inno Setup 配置及许可补充文件
+tools/                  发布构建、图标生成和安装检查
 tests/check_*.py        离线检查脚本
 tests/run_checks.py     检查运行器
 ```
@@ -135,6 +139,49 @@ python tests/run_checks.py
 
 ## 发布与许可证
 
-源码通过 `DayNest.pyw` 启动，诊断启动错误时可使用 `python daynest.py`。尚未提供打包好的可执行文件。
+源码通过 `DayNest.pyw` 启动，诊断启动错误时可使用 `python daynest.py`。Windows x64 发布版使用 PyInstaller 目录模式和 Inno Setup 7 制作，生成安装版与便携版。用户无需额外安装 Python。
 
-作者尚未指定开源许可证。公开发布前应选择许可证并添加 `LICENSE`；上传 GitHub 本身不授予开源许可。
+### 构建发布文件
+
+在 64 位 Windows、64 位 Python 3.11 环境中安装 [Inno Setup](https://jrsoftware.org/isdl.php)，然后执行（将 ISCC 路径换成实际位置）：
+
+```powershell
+python -m venv .build-env
+.\.build-env\Scripts\python.exe -m pip install -r requirements.txt -r requirements-build.txt
+.\.build-env\Scripts\python.exe tools/build_release.py --iscc "C:\Program Files\Inno Setup 7\ISCC.exe"
+```
+
+构建会先执行全部离线检查，生成图标和 Windows 版本信息，打包应用，再运行 EXE 的离线诊断。诊断验证实际冻结运行环境中的 Tk、六套主题、图标、时区、DPAPI、互斥锁与启动命令，不读取账户配置或连接网络。最后生成：
+
+```text
+dist/DayNest/                               完整可运行文件夹
+release/DayNest-1.0.0-Setup-win-x64.exe      安装包
+release/DayNest-1.0.0-Portable-win-x64.zip   便携压缩包
+release/SHA256SUMS.txt                      文件摘要
+```
+
+`build/`、`dist/`、`release/` 和 `.build-env/` 均不提交 Git。提交 `assets/`、`packaging/`、`tools/`、检查脚本和 `requirements-build.txt`，把发布文件放到 GitHub Releases。
+
+程序通过 `sys.frozen` 区分源码和 EXE 启动方式。开机启动使用实际 EXE 路径；已启用开机启动时，EXE 启动会刷新自己的启动路径，保证程序移动或重新安装后指向实际位置。`DayNest.exe --restore-window` 提供恢复普通窗口入口。图标使用相对模块位置加载，随程序资源一起打包。`DayNest.exe --self-test 报告路径.json` 可独立执行离线运行诊断。
+
+### 安装与卸载
+
+安装范围固定为当前用户，默认目录为 `%LOCALAPPDATA%\Programs\DayNest`，无需管理员权限。提供开始菜单正常启动和恢复入口，以及可选桌面快捷方式。相同 AppId 用于覆盖升级，安装前检查正在运行的 DayNest 实例。
+
+卸载仅删除安装的程序文件。`%APPDATA%\DayNest` 中的账户设置与日程数据保留。只有开机启动项确实指向本次卸载的 EXE 时才清理，不删除其他路径的启动配置。
+
+安装包的隔离验证：
+
+```powershell
+.\.build-env\Scripts\python.exe tools/test_installer.py release/DayNest-1.0.0-Setup-win-x64.exe
+```
+
+检查使用独立的测试 AppId、测试快捷方式名称及临时安装目录，完成安装、EXE 自检、卸载和数据保留检查；检查后删除测试安装。该检查会短暂创建当前用户的测试卸载记录。
+
+### 图标、依赖与签名
+
+`assets/DayNest.svg`、PNG 和 ICO 为项目生成的原创几何图标，可运行 `tools/generate_icon.py` 重新生成。安装文件夹中的 `licenses/` 保留 Python、python-dateutil、six、PyInstaller、Tcl 和 Tk 的许可文本。部分 Python 安装缺少 Tcl 的独立许可文件，项目随附来自 [Tcl 8.6.12 官方源码](https://github.com/tcltk/tcl/blob/core-8-6-12/license.terms)的文本供构建复制。
+
+当前产物未进行发布者代码签名。创建 EXE 安装包不等于完成签名，Windows 仍可能显示发布者未知或信誉提示。当前选择以无签名方式发布，不依赖付费签名服务。Inno Setup 的使用应遵守其当前许可条款。
+
+DayNest 的项目代码与原创图标采用 GPL-3.0-only，完整许可见根目录 `LICENSE`。构建工具将该文件复制到安装目录和便携包根目录，并保留第三方组件的许可文本。通过 GitHub Releases 分发二进制时，应同时提供与该版本对应的完整源码及构建脚本，例如使用指向同一提交的发布标签与源码归档。

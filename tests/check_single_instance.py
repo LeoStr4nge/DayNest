@@ -1,6 +1,8 @@
 """Check real Windows mutex lifetime and startup isolation without user data."""
 from pathlib import Path
 import subprocess
+import os
+import signal
 import sys
 import uuid
 from unittest.mock import MagicMock, patch
@@ -26,8 +28,11 @@ def check():
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     try:
         assert child.stdout.readline().strip() == 'LOCKED'
+        owner_pid = int(child.stdout.readline().strip())
         assert not guard.acquire()
-        child.terminate()
+        # Windows venv python.exe may be a redirector process. Terminate the
+        # actual child that owns the test mutex, not just the redirector.
+        os.kill(owner_pid, signal.SIGTERM)
         child.wait(timeout=5)
         assert guard.acquire(), 'Terminating the owner must release the mutex'
     finally:
@@ -80,6 +85,7 @@ if __name__ == '__main__':
         guard = m.SingleInstance(sys.argv[2])
         assert guard.acquire()
         print('LOCKED', flush=True)
+        print(os.getpid(), flush=True)
         sys.stdin.read()
         guard.close()
     else:

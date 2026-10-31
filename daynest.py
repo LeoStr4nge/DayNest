@@ -13,6 +13,8 @@ import os
 import re
 import queue
 import ssl
+import subprocess
+import sys
 import tempfile
 from http.client import IncompleteRead, RemoteDisconnected
 from pathlib import Path
@@ -143,7 +145,61 @@ def startup_message(text):
     user32.MessageBoxW(None, text, APP_NAME, 0x40)
 
 
+def launch_command(restore_window=False):
+    if getattr(sys, 'frozen', False):
+        command = [sys.executable]
+    else:
+        pythonw = Path(sys.executable).with_name('pythonw.exe')
+        command = [str(pythonw if pythonw.exists() else Path(sys.executable)),
+                   str(Path(__file__).resolve().with_name('DayNest.pyw'))]
+    if restore_window:
+        command.append('--restore-window')
+    return command
+
+
+def set_app_icon(root):
+    icon = Path(__file__).resolve().parent / 'assets' / 'DayNest.ico'
+    if icon.is_file():
+        root.iconbitmap(default=str(icon))
+
+
+def runtime_check(report_path):
+    """Offline packaging diagnostic; never loads account configuration."""
+    report = {'version': APP_VERSION, 'frozen': bool(getattr(sys, 'frozen', False))}
+    root = None
+    guard = None
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        for theme in THEMES:
+            apply_theme(root, theme)
+        set_app_icon(root)
+        root.update_idletasks()
+        report['tk'] = root.tk.call('info', 'patchlevel')
+        report['icon'] = (Path(__file__).resolve().parent / 'assets' / 'DayNest.ico').is_file()
+        report['dpapi'] = unprotect(protect('DayNest packaging check')) == 'DayNest packaging check'
+        report['timezone'] = gettz('Asia/Shanghai') is not None
+        guard = SingleInstance('Local\\DayNest.BuildCheck.' + uuid.uuid4().hex)
+        report['mutex'] = guard.acquire()
+        report['launch_command'] = launch_command()
+        report['restore_command'] = launch_command(True)
+        report['ok'] = all(report[key] for key in ('icon', 'dpapi', 'timezone', 'mutex'))
+    except Exception as error:
+        report['ok'] = False
+        report['error'] = type(error).__name__ + ': ' + str(error)
+    finally:
+        if guard:
+            guard.close()
+        if root:
+            root.destroy()
+    atomic_write(Path(report_path), json.dumps(report, ensure_ascii=False, indent=2), 'utf-8')
+    return 0 if report['ok'] else 1
+
+
 def main(restore_window=False):
+    if len(sys.argv) > 1 and sys.argv[1] == '--self-test':
+        return runtime_check(sys.argv[2]) if len(sys.argv) == 3 else 2
+    restore_window = restore_window or '--restore-window' in sys.argv[1:]
     guard = SingleInstance()
     try:
         try:
@@ -152,12 +208,15 @@ def main(restore_window=False):
             startup_message('无法检查 DayNest 是否已运行，请稍后重试。')
             return 1
         if not acquired:
-            startup_message('DayNest 已在运行。请使用现有窗口；如需恢复普通窗口，请先关闭 DayNest，再运行 RestoreWindow.pyw。')
+            startup_message('DayNest 已在运行。请使用现有窗口；如需恢复普通窗口，请先关闭 DayNest，再使用“恢复普通窗口”入口。')
             return 0
         if restore_window:
             config = load_config()
             config['desktop'] = False
             save_config(config)
+        shell32 = ctypes.WinDLL('shell32')
+        shell32.SetCurrentProcessExplicitAppUserModelID.argtypes = [wintypes.LPCWSTR]
+        shell32.SetCurrentProcessExplicitAppUserModelID('DayNest.Desktop')
         App().run()
         return 0
     finally:
@@ -1254,6 +1313,7 @@ class App:
         self.modal_windows = set()
         self.root = tk.Tk()
         apply_theme(self.root, self.config.get('theme', 'midnight'), self.config.get('accent'))
+        set_app_icon(self.root)
         self.root.title(APP_NAME)
         self.root.overrideredirect(self.config.get('desktop', True))
         self.root.geometry(f"360x580+{self.config.get('x',60)}+{self.config.get('y',60)}")
@@ -1265,6 +1325,11 @@ class App:
         self.root.protocol('WM_DELETE_WINDOW', self.close)
         self.build()
         self.show_cached_events()
+        if getattr(sys, 'frozen', False) and self.config.get('autostart', False):
+            try:
+                self.set_autostart(True)
+            except OSError:
+                get_logger().warning('autostart command refresh failed')
         if self.config.get('desktop', True):
             self.root.after(500, self.attach_desktop)
         if self.config.get('username') and self.config.get('password'):
@@ -2536,9 +2601,7 @@ class App:
     def set_autostart(self, enabled):
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run') as key:
             if enabled:
-                launcher = Path(__file__).resolve()
-                pythonw = Path(os.sys.executable).with_name('pythonw.exe')
-                winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, f'"{pythonw}" "{launcher}"')
+                winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, subprocess.list2cmdline(launch_command()))
             else:
                 try:
                     winreg.DeleteValue(key, APP_NAME)

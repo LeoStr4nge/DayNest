@@ -25,7 +25,15 @@ DayNest 是一款 Windows 中文桌面日历小组件，支持 iCloud 预设和�
 
 ## 安装与启动
 
-需要 Windows 和 Python 3.11 或以上版本。首次运行前，在项目文件夹中打开终端，执行：
+需要 64 位 Windows 10 或 Windows 11。
+
+**安装版（推荐）**：下载 Releases 中的 `DayNest-版本号-Setup-win-x64.exe`，双击按向导安装。无需安装 Python，可选择创建桌面快捷方式，开始菜单也会提供启动与恢复普通窗口入口。
+
+**便携版**：下载 `DayNest-版本号-Portable-win-x64.zip`，完整解压后运行文件夹中的 `DayNest.exe`。请保留同一文件夹内的其他文件。
+
+当前发布版本未进行代码签名，Windows 可能显示“未知发布者”或安全提示。请从本项目的 GitHub Releases 下载，并可使用随附的 `SHA256SUMS.txt` 核对文件完整性。
+
+**从源码运行**：需要 Python 3.11 或以上版本。首次运行前，在项目文件夹中打开终端，执行：
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -74,7 +82,11 @@ python DayNest.pyw
 
 **找不到桌面窗口？**
 
-先关闭已运行的 DayNest，再双击 `RestoreWindow.pyw`，即可恢复普通窗口。
+先关闭已运行的 DayNest。安装版在开始菜单选择 **DayNest - 恢复普通窗口**；便携版可运行 `DayNest.exe --restore-window`；源码版双击 `RestoreWindow.pyw`。
+
+**如何卸载？**
+
+安装版可在 Windows 设置的“已安装的应用”中卸载。账户设置和日程数据默认保留，方便重新安装后继续使用。便携版关闭后删除解压文件夹即可。
 
 **哪些日程可以编辑？**
 
@@ -93,3 +105,7 @@ python DayNest.pyw
 账户设置和日程数据保存在 `%APPDATA%\DayNest`。不要公开分享这个文件夹中的文件。
 
 开发与检查说明见[开发手册](docs/development.md)。
+
+## 许可证
+
+DayNest 采用 [GNU GPLv3](LICENSE)（`GPL-3.0-only`）许可证。第三方组件遵循各自的许可证，发行包中附有相应许可文本。
