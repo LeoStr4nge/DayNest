@@ -185,3 +185,8 @@ release/SHA256SUMS.txt                      文件摘要
 当前产物未进行发布者代码签名。创建 EXE 安装包不等于完成签名，Windows 仍可能显示发布者未知或信誉提示。当前选择以无签名方式发布，不依赖付费签名服务。Inno Setup 的使用应遵守其当前许可条款。
 
 DayNest 的项目代码与原创图标采用 GPL-3.0-only，完整许可见根目录 `LICENSE`。构建工具将该文件复制到安装目录和便携包根目录，并保留第三方组件的许可文本。通过 GitHub Releases 分发二进制时，应同时提供与该版本对应的完整源码及构建脚本，例如使用指向同一提交的发布标签与源码归档。
+
+
+### Glass appearance
+
+New configurations enable `glass` and use `opacity=0.9` (10% transparency). Existing saved opacity values are preserved. The appearance page previews the glass switch immediately; closing without saving restores the saved setting. Windows Acrylic composition uses a theme-tinted backdrop through SetWindowCompositionAttribute, with explicit pointer-sized ctypes signatures. This optional API is not a stable public Windows contract: unavailable or rejected calls leave ordinary Tk transparency available. When Acrylic is accepted, Tk opacity stays at 0.99 to retain its layered surface and the slider adjusts backdrop tint alpha, preserving foreground text. Otherwise ordinary whole-window opacity is used. Forced DWM frame extension is disabled: it caused a blank Tk client area despite successful API returns. Custom shadows remain pending. This is not a Liquid Glass refraction renderer.

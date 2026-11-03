@@ -25,10 +25,11 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory, \
      patch.object(m.App, 'refresh'), \
      patch.object(m.App, 'set_autostart'), \
      patch.object(m, 'get_logger', return_value=Mock()):
-    assert m.load_config()['opacity'] == 1.0
+    assert m.load_config()['opacity'] == 0.9
+    assert m.load_config()['glass'] is True
     m.CONFIG_FILE.write_text('{"opacity": "invalid"}', encoding='utf-8')
     assert m.load_config()['opacity'] == 1.0
-    m.save_config({'username': 'test', 'password': 'fake', 'desktop': False, 'opacity': 0.8})
+    m.save_config({'username': 'test', 'password': 'fake', 'desktop': False, 'glass': False, 'opacity': 0.8})
     app = m.App()
     try:
         app.root.update()
@@ -37,6 +38,10 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory, \
         app.root.update()
         dialog = next(iter(app.modal_windows))
         assert dialog.attributes('-alpha') == 1.0
+        glass = next(w for w in descendants(dialog) if w.winfo_name() == 'glass')
+        glass.invoke()
+        glass.invoke()
+        assert app.config['glass'] is False
         slider = next(w for w in descendants(dialog) if isinstance(w, m.ttk.Scale))
         slider.set(60)
         app.root.update()
@@ -52,6 +57,10 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory, \
         app.settings()
         app.root.update()
         dialog = next(iter(app.modal_windows))
+        glass = next(w for w in descendants(dialog) if w.winfo_name() == 'glass')
+        glass.invoke()
+        glass.invoke()
+        assert app.config['glass'] is False
         slider = next(w for w in descendants(dialog) if isinstance(w, m.ttk.Scale))
         slider.set(35)
         next(w for w in descendants(dialog)
@@ -60,6 +69,7 @@ with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory, \
         assert not app.modal_windows
         assert abs(app.root.attributes('-alpha') - 0.65) < 0.01
         assert m.load_config()['opacity'] == 0.65
+        assert m.load_config()['glass'] is False
     finally:
         for callback in app.root.tk.call('after', 'info'):
             app.root.after_cancel(callback)

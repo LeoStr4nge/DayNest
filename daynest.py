@@ -526,6 +526,46 @@ def urlopen(request, timeout):
     return build_opener(NoRedirect()).open(request, timeout=timeout)
 
 
+def set_window_glass(root, enabled, opacity=None):
+    """Best-effort Windows composition; never prevent startup on unsupported systems."""
+    class AccentPolicy(ctypes.Structure):
+        _fields_ = [('state', ctypes.c_int), ('flags', ctypes.c_int),
+                    ('color', wintypes.DWORD), ('animation', ctypes.c_int)]
+
+    class CompositionData(ctypes.Structure):
+        _fields_ = [('attribute', ctypes.c_int), ('data', ctypes.c_void_p),
+                    ('size', ctypes.c_size_t)]
+
+    if opacity is None:
+        opacity = getattr(root, 'glass_opacity', root.attributes('-alpha'))
+    root.glass_opacity = normalized_opacity(opacity)
+    root.glass_enabled = enabled
+    try:
+        user32 = ctypes.WinDLL('user32', use_last_error=True)
+        user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+        user32.GetAncestor.restype = wintypes.HWND
+        hwnd = user32.GetAncestor(root.winfo_id(), 2)
+        compose = user32.SetWindowCompositionAttribute
+        compose.argtypes = [wintypes.HWND, ctypes.POINTER(CompositionData)]
+        compose.restype = wintypes.BOOL
+        # Blur behind the layered Tk surface; keep Tk's existing opacity control.
+        red, green, blue = (int(BG[i:i + 2], 16) for i in (1, 3, 5))
+        tint = (round(root.glass_opacity * 255) << 24) | (blue << 16) | (green << 8) | red
+        policy = AccentPolicy(4 if enabled else 0, 2 if enabled else 0, tint, 0)
+        root.glass_enabled = enabled
+        data = CompositionData(19, ctypes.cast(ctypes.pointer(policy), ctypes.c_void_p), ctypes.sizeof(policy))
+        # Tk removes WS_EX_LAYERED at alpha=1, invalidating Acrylic rendering.
+        # Establish the layered surface before enabling composition.
+        root.attributes('-alpha', 0.99 if enabled else root.glass_opacity)
+        applied = bool(compose(hwnd, ctypes.byref(data)))
+        if not applied:
+            root.attributes('-alpha', root.glass_opacity)
+        return applied
+    except (AttributeError, OSError, tk.TclError):
+        root.attributes('-alpha', root.glass_opacity)
+        return False
+
+
 def normalized_opacity(value):
     try:
         value = float(value)
@@ -535,7 +575,7 @@ def normalized_opacity(value):
 
 
 def load_config():
-    defaults = {'username': '', 'password': '', 'x': 60, 'y': 60, 'desktop': True, 'opacity': 1.0, 'theme': 'midnight', 'accent': None,
+    defaults = {'username': '', 'password': '', 'x': 60, 'y': 60, 'desktop': True, 'glass': True, 'opacity': 0.9, 'theme': 'midnight', 'accent': None,
                 'provider': 'icloud', 'discovery_url': '', 'calendar_home_url': '', 'trusted_origins': []}
     try:
         stored = json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
@@ -547,6 +587,7 @@ def load_config():
         defaults['theme'] = 'midnight'
     if not isinstance(defaults['accent'], str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', defaults['accent']):
         defaults['accent'] = None
+    defaults['glass'] = defaults.get('glass') if isinstance(defaults.get('glass'), bool) else True
     defaults['opacity'] = normalized_opacity(defaults['opacity'])
     return defaults
 
@@ -1320,6 +1361,8 @@ class App:
         self.root.configure(bg=BG)
         self.root.attributes('-topmost', False)
         self.root.attributes('-alpha', normalized_opacity(self.config.get('opacity', 1.0)))
+        self.root.bind('<Map>', lambda event: set_window_glass(self.root, self.config.get('glass', True), self.config.get('opacity', 0.9))
+                       if event.widget is self.root else None, add='+')
         self.root.bind('<Configure>', self.moved)
         self.root.bind('<Destroy>', lambda event: self.closed.set() if event.widget == self.root else None)
         self.root.protocol('WM_DELETE_WINDOW', self.close)
@@ -2291,6 +2334,7 @@ class App:
             for child in widget.winfo_children():
                 recolor(child)
         recolor(self.root)
+        set_window_glass(self.root, getattr(self.root, 'glass_enabled', self.config.get('glass', True)))
 
     def settings(self):
         win = tk.Toplevel(self.root)
@@ -2349,6 +2393,12 @@ class App:
         ttk.Label(frame, text='留空保留原密码；部分服务需要应用专用密码', style='Muted.TLabel',
                   wraplength=340).grid(row=7, column=1, sticky='w')
         frame = appearance_frame
+        glass = tk.BooleanVar(value=self.config.get('glass', True))
+        ttk.Checkbutton(frame, name='glass', text='毛玻璃效果', variable=glass,
+                        command=lambda: set_window_glass(self.root, glass.get())).grid(
+                            row=0, column=0, columnspan=2, sticky='w', pady=(0, 4))
+        ttk.Label(frame, text='柔化背后的壁纸，推荐搭配 10%–20% 透明度。', style='Muted.TLabel').grid(
+            row=1, column=0, columnspan=2, sticky='w')
         desktop = tk.BooleanVar(value=self.config.get('desktop', True))
         ttk.Checkbutton(frame, text='固定在桌面层（Win + D 时仍可见）', variable=desktop).grid(row=3, column=0, columnspan=2, sticky='w', pady=14)
         autostart = tk.BooleanVar(value=self.config.get('autostart', False))
@@ -2362,7 +2412,7 @@ class App:
         def preview_opacity(value):
             percent = round(float(value))
             opacity_label.configure(text=f'{percent}%')
-            self.root.attributes('-alpha', normalized_opacity(1.0 - percent / 100))
+            set_window_glass(self.root, glass.get(), 1.0 - percent / 100)
         opacity_slider = ttk.Scale(opacity_frame, from_=0, to=60, variable=transparency,
                                    command=preview_opacity, style='Opacity.Horizontal.TScale',
                                    cursor='hand2', takefocus=True)
@@ -2370,7 +2420,7 @@ class App:
         opacity_label.configure(text=f'{round(transparency.get())}%')
         ttk.Label(frame, text='0% 为不透明；数值越大，壁纸越明显。', style='Muted.TLabel').grid(
             row=6, column=0, columnspan=2, sticky='w')
-        ttk.Label(frame, text='文字也会一起变淡，仅影响主组件。', style='Muted.TLabel').grid(
+        ttk.Label(frame, text='毛玻璃模式保持文字清晰，仅调整背景浓淡。', style='Muted.TLabel').grid(
             row=7, column=0, columnspan=2, sticky='w', pady=(3, 0))
         tk.Frame(frame, bg=HOVER, height=1).grid(row=8, column=0, columnspan=2, sticky='ew', pady=(18, 10))
         ttk.Label(frame, text='界面主题').grid(row=9, column=0, sticky='w', pady=5)
@@ -2415,12 +2465,14 @@ class App:
         def restore_opacity(event):
             if event.widget is win and self.root.winfo_exists():
                 self.root.attributes('-alpha', normalized_opacity(self.config.get('opacity', 1.0)))
+                set_window_glass(self.root, self.config.get('glass', True), self.config.get('opacity', 0.9))
                 self.preview_theme(self.config.get('theme', 'midnight'), self.config.get('accent'))
         win.bind('<Destroy>', restore_opacity, add='+')
         def save_appearance():
             if self.write_busy:
                 messagebox.showinfo('正在保存', '请等待日程保存完成后再修改设置。', parent=win)
                 return
+            self.config['glass'] = glass.get()
             self.config['desktop'] = desktop.get()
             self.config['autostart'] = autostart.get()
             self.config['opacity'] = normalized_opacity(1.0 - round(transparency.get()) / 100)
@@ -2489,8 +2541,15 @@ class App:
             self.refresh()
         footer = ttk.Frame(win, padding=(24, 10, 24, 20))
         footer.pack(side='bottom', fill='x', before=body)
-        ttk.Button(footer, text='保存外观', command=save_appearance).pack(side='left')
-        ttk.Button(footer, text='保存并同步', style='Accent.TButton', command=commit).pack(side='right')
+        appearance_save = ttk.Button(footer, text='保存外观', command=save_appearance)
+        account_save = ttk.Button(footer, text='保存并同步', style='Accent.TButton', command=commit)
+        def update_save_button(_event=None):
+            appearance_save.pack_forget()
+            account_save.pack_forget()
+            button = appearance_save if tabs.select() == str(appearance_frame) else account_save
+            button.pack(side='right')
+        tabs.bind('<<NotebookTabChanged>>', update_save_button)
+        update_save_button()
         self.show_dialog(win, theme_choice)
 
     def show_dialog(self, win, focus_widget):
