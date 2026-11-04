@@ -16,8 +16,8 @@ static class PrototypeChecks
             Check(PreviewSettings.Load(path) == new Appearance(), "Missing settings must use defaults");
             File.WriteAllText(path, "{broken");
             Check(PreviewSettings.Load(path) == new Appearance(), "Corrupt settings must recover");
-            PreviewSettings.Save(new Appearance(false, .67), path);
-            Check(PreviewSettings.Load(path) == new Appearance(false, .67), "Appearance must survive restart");
+            PreviewSettings.Save(new Appearance(false, .67, false), path);
+            Check(PreviewSettings.Load(path) == new Appearance(false, .67, false), "Theme, glass toggle and density must survive restart");
             File.WriteAllText(path, "{\"Dark\":false,\"Density\":20}");
             Check(PreviewSettings.Load(path) == new Appearance(), "Invalid density must recover");
             Check(Directory.GetFiles(directory, "*.tmp").Length == 0, "Atomic save must clean temporary files");

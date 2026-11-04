@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace DayNest.Glass;
 
-sealed record Appearance(bool Dark = true, double Density = .42);
+sealed record Appearance(bool Dark = true, double Density = .42, bool Glass = true);
 
 static class PreviewSettings
 {

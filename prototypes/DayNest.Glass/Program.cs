@@ -20,11 +20,12 @@ internal static class Program {
 sealed record Entry(DateTimeOffset Start, DateTimeOffset End, string Title, string Calendar, bool AllDay, string Notes);
 sealed record Pin(string Title, DateTimeOffset Start);
 sealed record Result(Entry[]? Events, string? Status, string? Error, Pin[]? Pins);
-sealed class CalendarApp : Application {
+public sealed partial class CalendarApp : Application {
  public CalendarApp(){
   UnhandledException+=(_,e)=>{
    try{File.AppendAllText(Path.Combine(AppContext.BaseDirectory,"render-errors.log"),$"{DateTimeOffset.Now:O} HRESULT=0x{e.Exception.HResult:X8}\n{e.Exception}\n");}catch{}
   };
+  InitializeComponent();
  }
  Window window=null!;
  readonly StackPanel page=new(){Padding=new Thickness(24),Spacing=16};
@@ -32,8 +33,6 @@ sealed class CalendarApp : Application {
  readonly TextBlock status=new(){FontSize=12,Opacity=.7,TextWrapping=TextWrapping.Wrap};
  readonly StackPanel calendar=new(){Spacing=12};
  readonly StackPanel pinned=new(){Spacing=8};
- readonly TextBlock settingsStatus=new(){FontSize=12,Opacity=.7,Text="外观自动保存"};
- readonly DispatcherTimer saveTimer=new(){Interval=TimeSpan.FromMilliseconds(400)};
  readonly bool stressMode=Environment.GetCommandLineArgs().Contains("--render-stress");
  CancellationTokenSource? requestCancellation;
  ScrollViewer surface=null!;
@@ -41,45 +40,32 @@ sealed class CalendarApp : Application {
  Border rim=null!;
  double glassDensity=.42;
  bool dark=true;
+ bool glassEnabled=true;
  readonly Button refresh=new(){Content="刷新本月"};
  readonly Dictionary<string,Result> months=new();
  readonly HashSet<Process> workers=new();
  DateTime selected=DateTime.Today;
  int generation; bool closed;
  protected override void OnLaunched(LaunchActivatedEventArgs args) {
-  var saved=PreviewSettings.Load();dark=saved.Dark;glassDensity=saved.Density;
-  saveTimer.Tick+=(_,_)=>{saveTimer.Stop();SaveAppearance();};
+  var saved=PreviewSettings.Load();dark=saved.Dark;glassDensity=saved.Density;glassEnabled=saved.Glass;
   window=new Window{Title="DayNest · 分层玻璃日历",SystemBackdrop=glass};
   window.Activated+=(_,e)=>glass.SetActive(e.WindowActivationState!=WindowActivationState.Deactivated);
   page.RequestedTheme=ElementTheme.Dark;
   page.Children.Add(new TextBlock{Text="DayNest",FontSize=30,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
   var actions=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};
-  var today=new Button{Content="今天"}; var theme=new Button{Content="浅色 / 深色"};
+  var today=new Button{Content="今天"}; var settings=new Button{Content="设置"};
   today.Click+=async(_,_)=>{selected=DateTime.Today;DrawCalendar();await Load(false);};
-  theme.Click+=(_,_)=>{dark=!dark;ApplyAppearance();SaveAppearance();};
+  settings.Click+=async(_,_)=>await ShowSettings();
   refresh.Click+=async(_,_)=>await Load(true);
-  actions.Children.Add(today);actions.Children.Add(refresh);actions.Children.Add(theme);page.Children.Add(actions);
-  var glassControls=new Grid{ColumnSpacing=12};
-  glassControls.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
-  glassControls.ColumnDefinitions.Add(new ColumnDefinition());
-  var densityLabel=new TextBlock{Text=$"玻璃浓度 {glassDensity*100:0}%",FontSize=12,VerticalAlignment=VerticalAlignment.Center};
-  var density=new Slider{Minimum=15,Maximum=80,Value=glassDensity*100,StepFrequency=1,MinWidth=140};
-  AutomationProperties.SetName(density,"玻璃浓度");
-  density.ValueChanged+=(_,e)=>{glassDensity=e.NewValue/100;densityLabel.Text=$"玻璃浓度 {e.NewValue:0}%";UpdateMaterial();saveTimer.Stop();saveTimer.Start();};
-  Grid.SetColumn(density,1);glassControls.Children.Add(densityLabel);glassControls.Children.Add(density);page.Children.Add(glassControls);
-  page.Children.Add(settingsStatus);page.Children.Add(pinned);page.Children.Add(calendar);page.Children.Add(status);page.Children.Add(agenda);
+  actions.Children.Add(today);actions.Children.Add(refresh);actions.Children.Add(settings);page.Children.Add(actions);
+  page.Children.Add(pinned);page.Children.Add(calendar);page.Children.Add(status);page.Children.Add(agenda);
   surface=new ScrollViewer{Content=page,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
   rim=new Border{Child=surface,BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8)};
   window.Content=rim;ApplyAppearance();
   window.AppWindow.Resize(new Windows.Graphics.SizeInt32(440,800));
-  window.Closed+=(_,_)=>{saveTimer.Stop();if(!stressMode)SaveAppearance();closed=true;generation++;requestCancellation?.Cancel();foreach(var p in workers.ToArray())try{if(!p.HasExited)p.Kill(true);}catch{}};
+  window.Closed+=(_,_)=>{closed=true;generation++;requestCancellation?.Cancel();foreach(var p in workers.ToArray())try{if(!p.HasExited)p.Kill(true);}catch{}};
   window.Activate(); _=Load(false);
   if(stressMode)RunRenderStress();
- }
- void SaveAppearance(){
-  if(stressMode)return;
-  try{PreviewSettings.Save(new Appearance(dark,glassDensity));settingsStatus.Text="外观已保存";}
-  catch(Exception e)when(e is IOException or UnauthorizedAccessException){settingsStatus.Text="外观暂时无法保存，下次调整时重试";}
  }
  async void RunRenderStress(){
   var origin=window.AppWindow.Position;
@@ -87,13 +73,13 @@ sealed class CalendarApp : Application {
    for(int i=0;i<60&&!closed;i++){
     window.AppWindow.Move(new Windows.Graphics.PointInt32(origin.X+(i%6)*12,origin.Y+(i%4)*8));
     window.AppWindow.Resize(new Windows.Graphics.SizeInt32(440+(i%3)*10,800+(i%2)*12));
-    dark=i%2==0;glassDensity=.15+(i%6)*.13;ApplyAppearance();
+    dark=i%2==0;glassEnabled=i%3!=0;glassDensity=.15+(i%6)*.13;ApplyAppearance();
     GC.Collect();GC.WaitForPendingFinalizers();GC.Collect();
     await Task.Delay(150);
    }
    if(!closed){
     window.AppWindow.Move(origin);window.AppWindow.Resize(new Windows.Graphics.SizeInt32(440,800));
-    dark=true;glassDensity=.42;ApplyAppearance();
+    dark=true;glassEnabled=true;glassDensity=.42;ApplyAppearance();
     File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"render-stress.txt"),"PASS: 60 move/resize/theme/material cycles with forced GC");
    }
   }catch(Exception e){
@@ -106,6 +92,7 @@ sealed class CalendarApp : Application {
   // The root theme also drives SystemBackdrop; a child-only theme leaves light glass behind white text.
   surface.RequestedTheme=page.RequestedTheme=dark?ElementTheme.Dark:ElementTheme.Light;
   rim.RequestedTheme=surface.RequestedTheme;
+  window.SystemBackdrop=glassEnabled?glass:null;
   UpdateMaterial();
   surface.Foreground=dark?Color(255,238,243,250):Color(255,28,39,55);
   glass.Update(dark,glassDensity);
@@ -119,7 +106,7 @@ sealed class CalendarApp : Application {
  void UpdateMaterial(){
   glass.Update(dark,glassDensity);
   // A thin luminance veil protects contrast on white wallpaper without hiding the blur.
-  if(GlassBackdrop.IsSupported){
+  if(glassEnabled&&GlassBackdrop.IsSupported){
    var veil=new LinearGradientBrush{StartPoint=new Windows.Foundation.Point(0,0),EndPoint=new Windows.Foundation.Point(0,1)};
    veil.GradientStops.Add(new GradientStop{Offset=0,Color=dark?Windows.UI.Color.FromArgb((byte)(glassDensity*150),14,20,30):Windows.UI.Color.FromArgb((byte)(glassDensity*140),250,251,255)});
    veil.GradientStops.Add(new GradientStop{Offset=1,Color=dark?Windows.UI.Color.FromArgb((byte)(glassDensity*200),14,20,30):Windows.UI.Color.FromArgb((byte)(glassDensity*210),250,251,255)});
