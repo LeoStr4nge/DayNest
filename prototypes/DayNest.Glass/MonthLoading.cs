@@ -68,8 +68,13 @@ sealed partial class CalendarApp
     // One process at a time, including writes. A cancelled read is fully reaped
     // before releasing the gate, so its Windows mutex cannot block the write.
     async Task<JsonElement> BridgeRequest(string command, object? payload = null,
-        CancellationToken cancellation = default, bool sync = false)
+        CancellationToken cancellation = default, bool sync = false, bool syncPins = true)
     {
+        if (InstanceChecks.IsWindowCheck)
+        {
+            if (command != "get-account") throw new InvalidOperationException("Instance checks cannot access the calendar bridge.");
+            return JsonSerializer.SerializeToElement(new { username = "", provider = "icloud", discovery_url = "", calendar_home_url = "", trusted_origins = Array.Empty<string>(), hasPassword = false });
+        }
         await bridgeGate.WaitAsync(cancellation);
         try
         {
@@ -87,6 +92,7 @@ sealed partial class CalendarApp
             info.ArgumentList.Add(Path.Combine(repo, "prototypes", "DayNest.Glass", "calendar_bridge.py"));
             info.ArgumentList.Add(command);
             if (sync) info.ArgumentList.Add("--refresh");
+            if (!syncPins) info.ArgumentList.Add("--no-pin-sync");
             using var process = Process.Start(info) ?? throw new InvalidOperationException();
             workers.Add(process);
             try
@@ -115,10 +121,10 @@ sealed partial class CalendarApp
         finally { bridgeGate.Release(); }
     }
 
-    async Task<Result> ReadMonth(string key, bool sync, CancellationToken cancellation)
+    async Task<Result> ReadMonth(string key, bool sync, CancellationToken cancellation, bool syncPins = true)
     {
         if (monthReaderOverride != null) return await monthReaderOverride(key, sync, cancellation);
-        var json = await BridgeRequest(key, cancellation: cancellation, sync: sync);
+        var json = await BridgeRequest(key, cancellation: cancellation, sync: sync, syncPins: syncPins);
         var data = json.Deserialize<Result>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new InvalidOperationException();
         if (data.Error != null) throw new CalendarReadException(data.Error);
@@ -142,14 +148,32 @@ sealed partial class CalendarApp
             {
                 data = await ReadMonth(key, false, request.Token);
                 if (closed || token != generation) return;
-                months[key] = data; Render(data);
+                StoreMonth(key, data); Render(data);
             }
             if (AutomaticNetwork && data.Configured && (sync || !MonthPolicy.Fresh(data, DateTimeOffset.UtcNow)))
             {
                 status.Text = data.HasCache ? "显示缓存 · 正在同步…" : "正在同步本月日程…";
                 var latest = await ReadMonth(key, true, request.Token);
                 if (closed || token != generation) return;
-                months[key] = latest; Render(latest);
+                data = latest; StoreMonth(key, latest); Render(latest);
+            }
+            if (recentOverview)
+            {
+                foreach (string other in RecentMonths(selected).Where(k => k != key))
+                {
+                    if (!months.TryGetValue(other, out var next))
+                    {
+                        next = await ReadMonth(other, false, request.Token);
+                        if (closed || token != generation) return;
+                        StoreMonth(other, next); Render(months[key]);
+                    }
+                    if (AutomaticNetwork && next.Configured && (sync || !MonthPolicy.Fresh(next, DateTimeOffset.UtcNow)))
+                    {
+                        next = await ReadMonth(other, true, request.Token, false);
+                        if (closed || token != generation) return;
+                        StoreMonth(other, next); Render(months[key]);
+                    }
+                }
             }
             prefetch = data.Configured && AutomaticNetwork;
             TrimMonthMemory();
@@ -184,9 +208,9 @@ sealed partial class CalendarApp
                 try
                 {
                     if (!months.TryGetValue(key, out var data)) data = await ReadMonth(key, false, request.Token);
-                    if (data.Configured && !MonthPolicy.Fresh(data, DateTimeOffset.UtcNow)) data = await ReadMonth(key, true, request.Token);
+                    if (data.Configured && !MonthPolicy.Fresh(data, DateTimeOffset.UtcNow)) data = await ReadMonth(key, true, request.Token, false);
                     if (closed || token != generation) return;
-                    months[key] = data; DrawCalendar();
+                    StoreMonth(key, data); DrawCalendar(); RenderPins(data.Pins ?? []);
                 }
                 catch (OperationCanceledException) when (request.IsCancellationRequested) { return; }
                 catch { /* A failed neighbor never replaces the visible month's status or cache. */ }

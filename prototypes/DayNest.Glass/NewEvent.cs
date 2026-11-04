@@ -37,6 +37,7 @@ sealed partial class CalendarApp
             PrimaryButtonText = "添加到日历", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
             IsPrimaryButtonEnabled = false
         };
+        dialog.Foreground = Brush(palette.Text); dialog.Background = Brush(palette.Card);
         DateTime previousStart = initial;
         start.Changed += () =>
         {
@@ -92,6 +93,7 @@ sealed partial class CalendarApp
                 }, message);
                 if (created)
                 {
+                    recentOverview = false;
                     selected = begin.Date;
                     if (selected != DateTime.Today) { monthOverview = false; calendar.Visibility = Visibility.Visible; }
                     e.Cancel = false;
@@ -108,7 +110,7 @@ sealed partial class CalendarApp
             _ = ReadCalendars();
             if (!closed) await dialog.ShowAsync();
         }
-        finally { readCancellation.Cancel(); detailsOpen = false; }
+        finally { readCancellation.Cancel(); detailsOpen = false; if (!closed) ApplyAppearance(); }
         if (created && !closed)
         {
             months.Clear(); DrawCalendar(); await Load(true);

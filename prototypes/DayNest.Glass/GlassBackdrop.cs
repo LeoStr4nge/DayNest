@@ -13,15 +13,17 @@ sealed class GlassBackdrop : SystemBackdrop
     readonly SystemBackdropConfiguration configuration = new() { IsInputActive = true };
     bool dark = true;
     double density = .42;
+    Windows.UI.Color? tint;
 
     public static bool IsSupported => DesktopAcrylicController.IsSupported();
 
     public void SetActive(bool active) => configuration.IsInputActive = active;
 
-    public void Update(bool isDark, double tintDensity)
+    public void Update(bool isDark, double tintDensity, Windows.UI.Color? color = null)
     {
         dark = isDark;
         density = Math.Clamp(tintDensity, .15, .8);
+        tint = color;
         Apply();
     }
 
@@ -39,13 +41,13 @@ sealed class GlassBackdrop : SystemBackdrop
     {
         if (controller == null) return;
         configuration.Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
-        controller.TintColor = dark ? Windows.UI.Color.FromArgb(255, 28, 28, 32)
-                                    : Windows.UI.Color.FromArgb(255, 246, 246, 248);
+        controller.TintColor = tint ?? (dark ? Windows.UI.Color.FromArgb(255, 28, 28, 32)
+                                    : Windows.UI.Color.FromArgb(255, 246, 246, 248));
         controller.TintOpacity = (float)density;
         // Tune luminance separately; never cover the material with an opaque XAML page.
         controller.LuminosityOpacity = dark ? .28f : .38f;
-        controller.FallbackColor = dark ? Windows.UI.Color.FromArgb(255, 28, 31, 38)
-                                       : Windows.UI.Color.FromArgb(255, 242, 244, 248);
+        controller.FallbackColor = tint ?? (dark ? Windows.UI.Color.FromArgb(255, 28, 31, 38)
+                                       : Windows.UI.Color.FromArgb(255, 242, 244, 248));
     }
 
     protected override void OnDefaultSystemBackdropConfigurationChanged(

@@ -23,6 +23,38 @@ static class PrototypeChecks
             File.WriteAllText(path, "{\"Dark\":false,\"Density\":20}");
             Check(PreviewSettings.Load(path) == new Appearance(), "Invalid density must recover");
             Check(Directory.GetFiles(directory, "*.tmp").Length == 0, "Atomic save must clean temporary files");
+            foreach (var preset in Themes.All)
+            {
+                foreach (string? custom in new string?[] { null, "#000000", "#ffffff", "#777777", "#00ff00", "#ff00ff" })
+                {
+                    var palette = Themes.Get(preset.Id, custom);
+                    Check(Themes.Contrast(palette.Accent, palette.OnAccent) >= 4.5, "Selected text must remain readable with every accent");
+                    Check(Themes.Contrast(palette.AccentInk, palette.Background) >= 4.5, "Accent text must remain readable on the theme background");
+                }
+            }
+            Check(Themes.Id(null, false) == "paper" && Themes.Id("bad", true) == "midnight", "Legacy light/dark and corrupt theme names must recover");
+            Check(!Themes.ValidColor("#00zz00") && !Themes.ValidColor("red") && !Themes.ValidColor("#fffff "), "Invalid colors must not reach the UI");
+            var startup = new CheckStartupEntry { Value = "old startup command" };
+            string executable = Path.Combine(directory, "folder with spaces", "DayNest.Glass.exe");
+            var personalized = new Appearance(false, .53, true, false, "sand", "#123456", true);
+            StartupRegistration.Save(personalized, path, startup, executable);
+            Check(startup.Value == $"\"{executable}\" --autostart", "Startup path must be quoted and point to the WinUI executable");
+            Check(PreviewSettings.Load(path) == personalized, "Theme, custom color and startup preference must persist together");
+            int changes = startup.Changes;
+            StartupRegistration.RefreshPath(startup, executable);
+            Check(startup.Changes == changes, "Unchanged startup command must not be rewritten");
+            StartupRegistration.Save(personalized with { AutoStart = false }, path, startup, executable);
+            Check(startup.Value == null, "Disabling startup must remove only the app's entry");
+            string before = File.ReadAllText(path);
+            startup.Fail = true;
+            try { StartupRegistration.Save(personalized, path, startup, executable); throw new InvalidOperationException("Registry failure accepted"); }
+            catch (UnauthorizedAccessException) { }
+            Check(File.ReadAllText(path) == before, "Registry failure must preserve saved appearance");
+            startup.Fail = false; startup.Value = "previous command";
+            try { StartupRegistration.Save(personalized, directory, startup, executable); throw new InvalidOperationException("Disk failure accepted"); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            Check(startup.Value == "previous command", "Disk failure must roll back the startup entry");
+            Check(CalendarApp.RecentMonths(new DateTime(2026, 12, 29)).SequenceEqual(new[] { "2026-12", "2027-01" }), "Recent view must span a year boundary");
             string positionPath = Path.Combine(directory, "position.json");
             Check(WidgetPlacement.Load(positionPath) == new WidgetPosition(), "Missing position must recover");
             WidgetPlacement.Save(new WidgetPosition(-1200, 90), positionPath);
@@ -49,12 +81,27 @@ static class PrototypeChecks
             var spanning = overnight with { Start = At(monthStart.AddHours(-1)), End = At(monthStart.AddHours(1)) };
             Check(CalendarApp.OccursInMonth(spanning, monthStart), "Monthly view must include events crossing into the month");
             Check(!CalendarApp.OccursInMonth(spanning with { End = At(monthStart) }, monthStart), "Monthly view must exclude events ending at its start");
-            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "self-test.txt"), "PASS: appearance/desktop-mode/position persistence and recovery, atomic save, cache expiry/clock rollback, cross-year prefetch and day/month event dates");
+            var duplicated = new Result([spanning], "", null, []);
+            Check(CalendarApp.RecentEntries([duplicated, duplicated]).Length == 1, "Cross-month recent view must deduplicate spanning events");
+            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "self-test.txt"), "PASS: theme/accent contrast and persistence, startup quoting/enable/disable/rollback, appearance/position recovery, atomic save, cache expiry and cross-year/day/month views");
         }
         finally
         {
             foreach (string file in Directory.GetFiles(directory)) File.Delete(file);
             Directory.Delete(directory);
+        }
+    }
+
+    sealed class CheckStartupEntry : IStartupEntry
+    {
+        public string? Value;
+        public bool Fail;
+        public int Changes;
+        public string? Read() => Value;
+        public void Write(string? command)
+        {
+            if (Fail) throw new UnauthorizedAccessException("simulated registry failure");
+            Value = command; Changes++;
         }
     }
 }

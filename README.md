@@ -2,6 +2,8 @@
 
 把日程留在桌面，把重要的日子放在眼前。
 
+当前实验分支同时保留 Python/Tk 原版和 Windows 11 WinUI 开发版。新版已迁移日程、固定倒计时、账户、主题、自启动和桌面模式，并提供玻璃材质；构建、功能和验证见 [WinUI 开发说明](prototypes/DayNest.Glass/README.md)。本页的安装包与源码启动说明仍针对原版，WinUI 独立安装及发布尚未处理。
+
 DayNest 是一款 Windows 中文桌面日历小组件，支持 iCloud 预设和自定义 HTTPS CalDAV 服务，可自定义主题配色和窗口透明度。历史版本验证过 iCloud；本次多服务接入改造尚未经过真实服务器测试。
 
 ## 你可以用它做什么

@@ -74,10 +74,51 @@ def pin_key(pin):
     return pin.get('key') or f"{pin.get('href') or pin['title']}|{pin['start']}"
 
 
+def pinned_event(pin, cache):
+    if pin.get('event'):
+        return c.deserialize_events([pin['event']])[0]
+    rows = list(cache.get('events', []))
+    for month in cache.get('months', {}).values(): rows.extend(month.get('events', []))
+    for event in c.deserialize_events(rows):
+        if c.event_key(event) == pin_key(pin) or (pin.get('href') and event[4].get('href') == pin['href']
+                and event[0] == datetime.fromisoformat(pin['start'])): return event
+    return (datetime.fromisoformat(pin['start']), pin['title'], pin.get('calendar', ''), False, {})
+
+
 def pin_views(cache, config):
-    return [dict(title=p['title'], start=p['start'], key=pin_key(p), actionHandle=c.protect(json.dumps(dict(
-        purpose='pin-remove', username=config['username'], connection=c.connection_config(config), key=pin_key(p)))))
-        for p in cache.get('pins', []) if isinstance(p, dict) and p.get('title') and p.get('start')]
+    views = []
+    for pin in sorted((p for p in cache.get('pins', []) if isinstance(p, dict) and p.get('title') and p.get('start')), key=lambda p: p['start']):
+        event = pinned_event(pin, cache)
+        view = event_view(event, config)
+        view['key'] = pin_key(pin)
+        views.append(dict(title=pin['title'], start=pin['start'], key=pin_key(pin), notes=c.event_notes(event), event=view,
+            actionHandle=c.protect(json.dumps(dict(purpose='pin-remove', username=config['username'],
+                connection=c.connection_config(config), key=pin_key(pin))))))
+    return views
+
+
+def track_pins(cache, client):
+    """Authoritative UID queries, shared per resource, using original recurrence logic."""
+    updated, lookups, failures = [], {}, 0
+    for pin in cache.get('pins', []):
+        try:
+            previous = pinned_event(pin, cache)
+            meta = previous[4]
+            if not meta.get('uid') or not meta.get('calendar_url'):
+                updated.append(pin); continue
+            identity = (meta['calendar_url'], meta['uid'])
+            if identity not in lookups:
+                try: lookups[identity] = client.pinned_resources(*identity)
+                except Exception as error: lookups[identity] = error
+            resources = lookups[identity]
+            if isinstance(resources, Exception): raise resources
+            event = c.tracked_pin_event(dict(pin, event=c.serialize_events([previous])[0]), resources)
+            if event is not None:
+                updated.append(dict(pin, key=c.event_key(event), title=event[1], start=event[0].isoformat(),
+                    calendar=event[2], href=event[4].get('href'), event=c.serialize_events([event])[0]))
+        except Exception:
+            updated.append(pin); failures += 1
+    return updated, failures
 
 
 def set_pin(payload, remove=False):
@@ -241,7 +282,7 @@ def create_event(payload):
         guard.close()
 
 
-def read_month(month, refresh=False):
+def read_month(month, refresh=False, sync_pins=True):
     # Serialize a whole refresh against account changes, edits, pins and the Tk
     # app. The UI cancels/awaits reads before writing, so no stale snapshot can
     # overwrite a successful write. Terminating a read releases the OS mutex.
@@ -270,6 +311,10 @@ def read_month(month, refresh=False):
             for url, name in calendars:
                 for resource in client.events(url, start, end):
                     events.extend(c.parse_events(resource['raw'], name, start, end, resource, url))
+            if sync_pins and cache.get('pins'):
+                pins, failures = track_pins(cache, client)
+                cache = dict(cache, pins=pins)
+                if failures: warning = '部分固定项暂未能更新，已保留上次数据。'
             # Commit only after every calendar succeeds. Preserve pins and the
             # other months; reuse the original encrypted/atomic cache format.
             synced_at = time.time()
@@ -278,7 +323,7 @@ def read_month(month, refresh=False):
                          calendars=calendars, discovered_at=discovered_at, resource_cache=resources.snapshot(),
                          months=c.persistent_months(dict(cache.get('months', {}), **{month: entry})))
             try: c.save_cache(cache)
-            except (OSError, ValueError): warning = '日程已同步，但缓存保存失败；重启后需要重新同步。'
+            except (OSError, ValueError): warning = (warning + ' ' if warning else '') + '日程已同步，但缓存保存失败；重启后需要重新同步。'
             status = '已同步 · ' + datetime.now().strftime('%H:%M')
         if not configured: status = '请打开设置，填写日历账户后同步'
         return dict(status=status, pins=pin_views(cache, config), configured=configured,
@@ -297,7 +342,7 @@ if __name__ == '__main__':
         elif sys.argv[1] == 'remove-pin': result = set_pin(json.load(sys.stdin), remove=True)
         elif sys.argv[1] == 'get-calendars': result = calendar_choices(json.load(sys.stdin))
         elif sys.argv[1] == 'create-event': result = create_event(json.load(sys.stdin))
-        else: result=read_month(sys.argv[1], '--refresh' in sys.argv)
+        else: result=read_month(sys.argv[1], '--refresh' in sys.argv, '--no-pin-sync' not in sys.argv)
     except ValueError as error:
         result = dict(error=str(error))
     except Exception: result=dict(error='读取失败，请检查账户、网络及 Python 依赖。')

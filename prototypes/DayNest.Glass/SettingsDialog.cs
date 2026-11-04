@@ -16,7 +16,7 @@ sealed partial class CalendarApp
         if (settingsOpen || detailsOpen || writeBusy || closed) return;
         settingsOpen = true;
         CancelMonthRequests();
-        var original = new Appearance(dark, glassDensity, glassEnabled, desktopMode);
+        var original = CurrentAppearance();
         bool appearanceSaved = false, accountSaved = false, saving = false, accountLoaded = false;
         var message = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 13 };
         var dialog = new ContentDialog
@@ -26,37 +26,78 @@ sealed partial class CalendarApp
             PrimaryButtonText = "保存外观", CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary
         };
+        dialog.Foreground = Brush(palette.Text); dialog.Background = Brush(palette.Card);
+        if (InstanceChecks.IsWindowCheck) instanceCheckDialog = dialog;
         bool isAccount = false;
         var tabs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var appearanceTab = new Button { Content = "外观与个性化" };
         var accountTab = new Button { Content = "日历账户" };
         tabs.Children.Add(appearanceTab); tabs.Children.Add(accountTab);
         var appearance = new StackPanel { Spacing = 16, Padding = new Thickness(0, 10, 0, 12) };
-        var theme = new ComboBox { Header = "界面主题", HorizontalAlignment = HorizontalAlignment.Stretch };
-        theme.Items.Add("深色"); theme.Items.Add("浅色"); theme.SelectedIndex = dark ? 0 : 1;
+        var theme = new ComboBox { Header = "主题配色", HorizontalAlignment = HorizontalAlignment.Stretch };
+        foreach (var preset in Themes.All) theme.Items.Add(preset.Name);
+        theme.SelectedIndex = Array.FindIndex(Themes.All, t => t.Id == themeId);
+        string? draftAccent = accentColor;
+        bool updatingPicker = false;
+        var colorPicker = new ColorPicker { Color = palette.Accent, IsAlphaEnabled = false, IsHexInputVisible = true, Width = 280 };
+        var colorButton = new Button { Content = Themes.Hex(palette.Accent), HorizontalAlignment = HorizontalAlignment.Stretch, Flyout = new Flyout { Content = colorPicker } };
+        AutomationProperties.SetName(colorButton, "自定义主题颜色");
+        var resetColor = new Button { Content = "恢复推荐配色" };
+        var colorRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        colorRow.Children.Add(colorButton); colorRow.Children.Add(resetColor);
+        var autoStartToggle = new ToggleSwitch { Header = "登录 Windows 后自动启动", IsOn = autoStart };
         var glassToggle = new ToggleSwitch { Header = "毛玻璃效果", IsOn = glassEnabled };
         var desktopToggle = new ToggleSwitch { Header = "桌面小组件模式", IsOn = desktopMode };
+        void RecoverNormalWindow()
+        {
+            original = original with { Desktop = false };
+            desktopToggle.IsOn = false;
+        }
+        normalWindowRequested += RecoverNormalWindow;
         var densityLabel = new TextBlock { Text = $"玻璃浓度 {glassDensity * 100:0}%" };
         var density = new Slider { Minimum = 15, Maximum = 80, Value = glassDensity * 100, StepFrequency = 1 };
         AutomationProperties.SetName(density, "玻璃浓度");
-        appearance.Children.Add(theme); appearance.Children.Add(desktopToggle); appearance.Children.Add(glassToggle);
+        appearance.Children.Add(theme); appearance.Children.Add(new TextBlock { Text = "主题颜色" }); appearance.Children.Add(colorRow);
+        appearance.Children.Add(autoStartToggle); appearance.Children.Add(desktopToggle); appearance.Children.Add(glassToggle);
         appearance.Children.Add(new TextBlock { Text = "桌面模式下拖动 DayNest 标题调整位置，Win+D 后仍显示；关闭此选项恢复普通窗口。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         appearance.Children.Add(densityLabel); appearance.Children.Add(density);
-        appearance.Children.Add(new TextBlock { Text = "即时预览；保存后下次启动沿用。取消会恢复原来的外观。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
+        appearance.Children.Add(new TextBlock { Text = "主题与玻璃效果即时预览；桌面模式在关闭设置后切换。保存后下次启动沿用，取消恢复原外观。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         void Preview()
         {
-            dark = theme.SelectedIndex == 0; glassEnabled = glassToggle.IsOn; glassDensity = density.Value / 100;
+            themeId = Themes.All[Math.Max(0, theme.SelectedIndex)].Id; accentColor = draftAccent;
+            autoStart = autoStartToggle.IsOn; glassEnabled = glassToggle.IsOn; glassDensity = density.Value / 100;
             desktopMode = desktopToggle.IsOn;
             density.IsEnabled = glassEnabled;
             densityLabel.Text = $"玻璃浓度 {density.Value:0}%";
             ApplyAppearance();
             dialog.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
+            dialog.Foreground = Brush(palette.Text); dialog.Background = Brush(palette.Card);
+            colorPicker.RequestedTheme = dialog.RequestedTheme;
+            colorButton.Content = Themes.Hex(palette.Accent); colorButton.Background = Brush(palette.Accent); colorButton.Foreground = Brush(palette.OnAccent);
         }
-        theme.SelectionChanged += (_, _) => Preview();
+        void RecommendedColor()
+        {
+            draftAccent = null; updatingPicker = true;
+            colorPicker.Color = Themes.Get(Themes.All[Math.Max(0, theme.SelectedIndex)].Id).Accent;
+            updatingPicker = false; Preview();
+        }
+        theme.SelectionChanged += (_, _) => RecommendedColor();
+        resetColor.Click += (_, _) => RecommendedColor();
+        colorPicker.ColorChanged += (_, args) => { if (!updatingPicker) { draftAccent = Themes.Hex(args.NewColor); Preview(); } };
+        autoStartToggle.Toggled += (_, _) => Preview();
         glassToggle.Toggled += (_, _) => Preview();
         desktopToggle.Toggled += (_, _) => Preview();
         density.ValueChanged += (_, _) => Preview();
+        if (Environment.GetCommandLineArgs().Contains("--features-check"))
+            featureAppearancePreview = (id, color, startup) =>
+            {
+                theme.SelectedIndex = Array.FindIndex(Themes.All, t => t.Id == id);
+                if (color != null) colorPicker.Color = Themes.Parse(color);
+                autoStartToggle.IsOn = startup;
+                Preview();
+            };
         density.IsEnabled = glassEnabled;
+        colorButton.Background = Brush(palette.Accent); colorButton.Foreground = Brush(palette.OnAccent);
 
         var account = new StackPanel { Spacing = 12, Padding = new Thickness(0, 10, 0, 12) };
         var provider = new ComboBox { Header = "日历服务", HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -126,10 +167,11 @@ sealed partial class CalendarApp
                 {
                     try
                     {
-                        PreviewSettings.Save(new Appearance(dark, glassDensity, glassEnabled, desktopMode));
+                        if (!InstanceChecks.IsWindowCheck) StartupRegistration.Save(CurrentAppearance());
+                        startupNotice = null;
                         appearanceSaved = true; e.Cancel = false;
                     }
-                    catch { message.Text = "外观保存失败，请检查本地文件权限后重试。"; }
+                    catch { message.Text = "外观或自动启动保存失败，请检查本地权限后重试。"; }
                     return;
                 }
                 if (!accountLoaded) { message.Text = "请关闭设置后重试读取账户信息。"; return; }
@@ -163,14 +205,17 @@ sealed partial class CalendarApp
         }
         finally
         {
+            normalWindowRequested -= RecoverNormalWindow;
             layoutRoot.Changed -= RootChanged;
             password.Password = "";
             if (!appearanceSaved && !closed)
             {
-                dark = original.Dark; glassDensity = original.Density; glassEnabled = original.Glass;
-                desktopMode = original.Desktop; ApplyAppearance();
+                ReadAppearance(original); ApplyAppearance();
             }
             settingsOpen = false;
+            featureAppearancePreview = null;
+            if (!closed) ApplyAppearance();
+            if (InstanceChecks.IsWindowCheck) { instanceCheckDialog = null; WriteInstanceWindowReport(); }
         }
         if (!closed) await Load(accountSaved);
     }

@@ -7,6 +7,9 @@ namespace DayNest.Glass;
 
 sealed partial class CalendarApp
 {
+    Pin[]? renderedPins;
+    DateTime renderedPinDay;
+    string? renderedPinTheme;
     async Task<bool> ChangePin(string command, string? handle, TextBlock notice)
     {
         if (writeBusy || closed) return false;
@@ -29,22 +32,34 @@ sealed partial class CalendarApp
 
     void RenderPins(Pin[] pins)
     {
+        string appearance = themeId + "|" + Themes.Hex(palette.Accent);
+        if (renderedPinDay == DateTime.Today && renderedPinTheme == appearance &&
+            renderedPins != null && renderedPins.SequenceEqual(pins) && pinned.Children.Count == pins.Length) return;
+        renderedPins = pins; renderedPinDay = DateTime.Today; renderedPinTheme = appearance;
         pinned.Children.Clear();
-        foreach (var pin in pins)
+        foreach (var pin in pins.OrderBy(p => p.Start))
         {
             int days = (pin.Start.LocalDateTime.Date - DateTime.Today).Days;
             string countdown = days == 0 ? "今天" : days > 0 ? $"还有 {days} 天" : $"已过 {-days} 天";
-            var text = new TextBlock { Text = $"{pin.Title} · {countdown}", TextWrapping = TextWrapping.Wrap, FontSize = 15 };
+            var content = new StackPanel { Spacing = 6 };
+            content.Children.Add(new TextBlock { Text = pin.Title, TextWrapping = TextWrapping.Wrap, FontSize = 15 });
+            content.Children.Add(new TextBlock { Text = countdown, FontSize = 22, Foreground = Brush(palette.AccentInk) });
+            if (!string.IsNullOrWhiteSpace(pin.Notes)) content.Children.Add(new TextBlock
+            {
+                Text = string.Join(" ", pin.Notes.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)),
+                MaxLines = 1, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, Opacity = .8
+            });
             var remove = new MenuFlyoutItem { Text = "取消固定", IsEnabled = !string.IsNullOrEmpty(pin.ActionHandle) };
             var menu = new MenuFlyout(); menu.Items.Add(remove);
             var card = new Button
             {
-                Content = text, Padding = new Thickness(12), CornerRadius = new CornerRadius(10),
-                Background = Color(24, 110, 160, 230), HorizontalAlignment = HorizontalAlignment.Stretch,
+                Content = content, Padding = new Thickness(12), CornerRadius = new CornerRadius(10),
+                Background = Tint(40, palette.Accent), HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch, ContextFlyout = menu
             };
             AutomationProperties.SetName(card, $"固定倒计时：{pin.Title}，{countdown}");
-            ToolTipService.SetToolTip(card, "右键可取消固定");
+            ToolTipService.SetToolTip(card, "点击查看详情，右键可取消固定");
+            if (pin.Event != null) card.Click += async (_, _) => await ShowEventDetails(pin.Event);
             remove.Click += async (_, _) =>
             {
                 remove.IsEnabled = false;

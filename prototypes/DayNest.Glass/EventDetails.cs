@@ -72,6 +72,8 @@ sealed partial class CalendarApp
             IsPrimaryButtonEnabled = entry.Editable, IsSecondaryButtonEnabled = entry.Deletable,
             DefaultButton = ContentDialogButton.Close
         };
+        details.Foreground = Brush(palette.Text); details.Background = Brush(palette.Card);
+        if (Environment.GetCommandLineArgs().Contains("--features-check")) featureDetailsDialog = details;
         details.Closing += (_, e) => { if (saving) e.Cancel = true; };
         pinButton.Click += async (_, _) =>
         {
@@ -135,6 +137,7 @@ sealed partial class CalendarApp
                     Title = "确认删除日程", XamlRoot = page.XamlRoot, RequestedTheme = details.RequestedTheme,
                     Content = warning, PrimaryButtonText = "删除日程", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close
                 };
+                confirm.Foreground = Brush(palette.Text); confirm.Background = Brush(palette.Card);
                 bool deleting = false;
                 confirm.Closing += (_, e) => { if (deleting) e.Cancel = true; };
                 confirm.PrimaryButtonClick += async (_, e) =>
@@ -151,7 +154,7 @@ sealed partial class CalendarApp
                 if (changed) break;
             }
         }
-        finally { detailsOpen = false; }
+        finally { detailsOpen = false; featureDetailsDialog = null; if (!closed) ApplyAppearance(); }
         if (changed && !closed)
         {
             months.Clear(); agenda.Children.Clear(); pinned.Children.Clear(); DrawCalendar();
