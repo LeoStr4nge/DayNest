@@ -101,8 +101,12 @@ sealed partial class CalendarApp
         var hint = new TextBlock { Text = "iCloud 使用 App 专用密码。密码留空可保留已有密码；更换账户或服务时需重新填写。", TextWrapping = TextWrapping.Wrap, Opacity = .75 };
         account.Children.Add(provider); account.Children.Add(custom); account.Children.Add(username);
         account.Children.Add(password); account.Children.Add(hint);
-        var appearancePage = new ScrollViewer { Content = appearance, MaxHeight = 390 };
-        var accountPage = new ScrollViewer { Content = account, MaxHeight = 390, Visibility = Visibility.Collapsed };
+        var appearancePage = new ScrollViewer { Content = appearance, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        var accountPage = new ScrollViewer { Content = account, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Visibility = Visibility.Collapsed };
+        // Both modules share one viewport so their different desired sizes do
+        // not move the dialog or footer when switching pages/services.
+        var viewport = new Grid();
+        viewport.Children.Add(appearancePage); viewport.Children.Add(accountPage);
         void SelectPage(bool accountSelected)
         {
             isAccount = accountSelected;
@@ -113,8 +117,18 @@ sealed partial class CalendarApp
         }
         appearanceTab.Click += (_, _) => SelectPage(false);
         accountTab.Click += (_, _) => SelectPage(true);
-        var body = new StackPanel { Spacing = 12, MinWidth = 280 };
-        body.Children.Add(tabs); body.Children.Add(appearancePage); body.Children.Add(accountPage); body.Children.Add(message); dialog.Content = body;
+        var body = new StackPanel { Spacing = 12 };
+        var messageArea = new ScrollViewer { Content = message, Height = 48, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        body.Children.Add(tabs); body.Children.Add(viewport); body.Children.Add(messageArea); dialog.Content = body;
+        var layoutRoot = page.XamlRoot;
+        void SizeContent()
+        {
+            body.Width = Math.Max(200, Math.Min(420, layoutRoot.Size.Width - 64));
+            viewport.Height = Math.Max(120, Math.Min(390, layoutRoot.Size.Height - 320));
+        }
+        void RootChanged(XamlRoot _, XamlRootChangedEventArgs args) => SizeContent();
+        SizeContent();
+        layoutRoot.Changed += RootChanged;
         try
         {
             try
@@ -178,6 +192,7 @@ sealed partial class CalendarApp
         }
         finally
         {
+            layoutRoot.Changed -= RootChanged;
             password.Password = "";
             if (!appearanceSaved && !closed)
             {
