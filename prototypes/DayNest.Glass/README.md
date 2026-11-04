@@ -1,22 +1,49 @@
-# WinUI 玻璃日历实验
+# DayNest WinUI 玻璃日历实验
 
-构建：`dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=x64`
+此分支用于验证 Windows 11 上的 WinUI 3 界面；原版 Python/Tk 程序仍为功能完整的版本。新界面用 C# 编写，CalDAV、DPAPI 账户读取及日程解析复用 Python；目前没有 C++ 代码。
 
-运行：`prototypes/DayNest.Glass/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/DayNest.Glass.exe`
+## 构建与启动
 
-需要 Windows 11、.NET 10、仓库 `.venv` 中的 Python 依赖。
-读取原版 DayNest 的账户和加密缓存；打开时只读取缓存，选择日期后点击“刷新本月”读取该日期所在月份的真实日历。同步结果暂存在新界面内存中，不修改原版缓存。密码在 Python 中解密，不传入进程命令行或 WinUI 界面。
+需要 Windows 11、.NET 10 SDK、WinUI 构建工具，以及仓库 `.venv` 中已安装 `requirements.txt` 的 Python 环境。
 
-当前包括原生 Acrylic、深浅主题、月历、日期选择、单日安排及完整备注。新增/编辑、固定项管理、桌面层级与账户设置尚未迁移，继续使用原版程序。日历内置箭头只翻页，选中日期后才决定刷新月份。未接入 Pane 的自定义材质、双层阴影。此版本不是原版功能的完整替代。
+```powershell
+dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=x64 -p:OutputPath=bin/GlassFinal/
+.\prototypes\DayNest.Glass\bin\GlassFinal\DayNest.Glass.exe
+```
 
-## 分层材质试验（GlassFinal）
+重新编译前先关闭该输出目录下运行的窗口。
 
-本次参考 Pane 的染色/亮度分离与边缘高光设计，使用独立实现的 WinUI `DesktopAcrylicController` 调整材质；没有复制 Pane 的双 HWND 宿主或 C++ 效果代码。参考源码：https://github.com/LBEILC/Pane/blob/cfa1951069ea2656f582c7aee092783610c63e05/src/Pane.App/Hosting/SceneB.cs
+## 当前功能
 
-移除原来 67%–73% 不透明的页面遮罩，改为较薄渐变染色；“玻璃浓度”同时调整系统材质染色与页面染色，范围 15%–80%，默认 42%。主题、浓度仅在本次进程内生效。系统未开启透明效果、节能或窗口失焦时，系统可能使用不透明回退材质。未实现 Pane 的双层阴影与饱和度效果。
+- 自定义日期网格、翻月、今天、单日安排与完整备注。
+- 从原版加密缓存读取真实日程，手动刷新所选月份；新同步结果只保存在原型内存中。
+- 日期下方显示日程标记，按跨天持续时间计算，午夜结束不标记下一天。
+- 顶部显示原版已保存的固定倒计时。这是只读缓存快照，外部改期/删除跟踪及固定项管理仍由原版负责。
+- 深浅主题、玻璃浓度自动保存到 `%LOCALAPPDATA%\DayNest\glass-preview.json`，不改动原版配置。写入失败时界面提示；无效配置恢复默认。
+- 切换月份会取消旧的读取进程；关闭窗口取消读取任务。
 
-构建：`dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=x64 -p:OutputPath=bin/GlassFinal/`
+首次无账户时，请在原版配置。Python 内解密密码，不将凭据传给 WinUI 或进程命令行。原型不写入原版日程缓存或账户。
 
-启动：`prototypes/DayNest.Glass/bin/GlassFinal/DayNest.Glass.exe`
+## 材质与稳定性
 
-稳定性修复：自定义玻璃控制器独立持有 SystemBackdropConfiguration，由窗口显式提供激活与主题状态。避免系统默认配置变化回调中 target 无效导致的 0x80070057 异常。保留应用强引用。可用 --render-stress 执行 60 轮移动/缩放/主题/材质与强制 GC 检查，结果写入 EXE 目录 render-stress.txt；未处理的 WinUI 异常写入 render-errors.log。
+参考 [Pane 的 SceneB](https://github.com/LBEILC/Pane/blob/cfa1951069ea2656f582c7aee092783610c63e05/src/Pane.App/Hosting/SceneB.cs) 的染色/亮度分离与边缘高光设计，独立实现 `DesktopAcrylicController`。未复制 Pane 的双 HWND 宿主或 C++ 效果代码；双层阴影与饱和度效果尚未实现。
+
+浓度范围 15%–80%，默认 42%。薄渐变染色保护文字对比度；系统根据透明效果、节能或失焦状态可能启用不透明回退。
+
+自定义控制器持有独立的 `SystemBackdropConfiguration`，显式更新主题及激活状态，避免查询默认配置时 target 无效引起的 0x80070057 闪退。应用保留强引用。
+
+## 验证
+
+```powershell
+.\.venv\Scripts\python.exe -B prototypes/DayNest.Glass/check_bridge.py
+.\prototypes\DayNest.Glass\bin\GlassFinal\DayNest.Glass.exe --self-test
+.\prototypes\DayNest.Glass\bin\GlassFinal\DayNest.Glass.exe --render-stress
+```
+
+`--self-test` 不打开窗口，检查独立临时目录中的外观保存/恢复，以及跨天、午夜和零时长日程日期，报告写入 EXE 目录 `self-test.txt`。
+
+`--render-stress` 打开窗口，执行 60 轮移动、缩放、主题/浓度调整和强制 GC；不保存外观，结果写入 `render-stress.txt`。未处理 WinUI 异常写入 `render-errors.log`。桥接检查模拟配置和缓存，不访问真实服务器。
+
+## 合并条件
+
+当前保留实验分支，不合并 main。合并前需要完成或明确规划：日程新增/编辑、账户设置、固定项管理、桌面层级和单实例、发布打包、真实日历同步回归、多屏/DPI 与长期驻留稳定性验证。当前检查不能替代上述验收。
