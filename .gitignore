@@ -20,3 +20,7 @@ release/
 .env.*
 Thumbs.db
 Desktop.ini
+
+# WinUI prototype build outputs
+prototypes/**/bin/
+prototypes/**/obj/
