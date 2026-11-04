@@ -30,6 +30,10 @@ static class PrototypeChecks
             Check(!CalendarApp.OccursOn(midnight, day), "Exclusive midnight end must not mark the next day");
             var instant = overnight with { Start = At(day.AddHours(9)), End = At(day.AddHours(9)) };
             Check(CalendarApp.OccursOn(instant, day), "Zero-duration event must remain visible");
+            var monthStart = new DateTime(2026, 11, 1);
+            var spanning = overnight with { Start = At(monthStart.AddHours(-1)), End = At(monthStart.AddHours(1)) };
+            Check(CalendarApp.OccursInMonth(spanning, monthStart), "Monthly view must include events crossing into the month");
+            Check(!CalendarApp.OccursInMonth(spanning with { End = At(monthStart) }, monthStart), "Monthly view must exclude events ending at its start");
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "self-test.txt"), "PASS: appearance persistence/recovery, atomic save, overnight/midnight/instant event dates");
         }
         finally

@@ -33,7 +33,8 @@ sealed partial class CalendarApp
             var stderr = process.StandardError.ReadToEndAsync();
             if (payload != null) await process.StandardInput.WriteAsync(JsonSerializer.Serialize(payload));
             process.StandardInput.Close();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(
+                command is "edit-event" or "delete-event" ? 90 : 20));
             try { await process.WaitForExitAsync(timeout.Token); }
             catch { if (!process.HasExited) process.Kill(true); throw; }
             string output = await stdout;
@@ -47,7 +48,7 @@ sealed partial class CalendarApp
 
     async Task ShowSettings()
     {
-        if (settingsOpen || closed) return;
+        if (settingsOpen || detailsOpen || writeBusy || closed) return;
         settingsOpen = true;
         var original = new Appearance(dark, glassDensity, glassEnabled);
         bool appearanceSaved = false, accountSaved = false, saving = false, accountLoaded = false;

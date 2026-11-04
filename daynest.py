@@ -969,6 +969,23 @@ class CalDAV:
             raise ValueError(f'日历服务写入失败：HTTP {e.code}') from e
 
 
+    def delete_event(self, href, etag):
+        href = self.validate_url(href)
+        if not etag:
+            raise ValueError('缺少事件版本号，无法安全删除，请刷新后重试')
+        request = Request(href, headers={'Authorization': self.auth, 'If-Match': etag}, method='DELETE')
+        try:
+            response, _ = self.open(request, 30)
+            with response as stream:
+                stream.read()
+        except HTTPError as error:
+            if error.code in (404, 410, 412):
+                raise ValueError('日程已在其他设备上修改或删除，请刷新后重试') from error
+            if error.code in (401, 403):
+                raise ValueError('日历服务拒绝删除，请确认日历允许编辑') from error
+            raise ValueError(f'日历服务删除失败：HTTP {error.code}') from error
+
+
 def parallel_results(function, arguments, cancel, max_workers=4):
     """Bounded read workers that never hold the application process open."""
     arguments = list(arguments)

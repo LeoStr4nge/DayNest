@@ -11,7 +11,7 @@ cache = {'username': 'test', 'events': c.serialize_events([event]),
          'pins': [{'title': '重要日期', 'start': '2026-12-01T09:00:00+08:00'}]}
 
 with patch.object(c, 'load_config', return_value=config), patch.object(c, 'load_cache', return_value=cache), \
-     patch.object(c, 'CalDAV') as network, patch.object(c, 'save_cache') as save:
+     patch.object(c, 'CalDAV') as network, patch.object(c, 'save_cache') as save, patch.object(c, 'protect', side_effect=lambda value: value):
     result = bridge.read_month('2026-11')
     assert result['events'][0]['notes'] == '多行\n备注'
     assert result['pins'][0]['title'] == '重要日期'
