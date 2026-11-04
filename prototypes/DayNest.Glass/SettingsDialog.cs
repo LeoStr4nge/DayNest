@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Text;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,46 +9,14 @@ sealed partial class CalendarApp
 {
     bool settingsOpen;
 
-    async Task<JsonElement> AccountRequest(string command, object? payload = null)
-    {
-        string repo = Repo();
-        string python = Path.Combine(repo, ".venv", "Scripts", "python.exe");
-        if (!File.Exists(python)) python = "python";
-        var info = new ProcessStartInfo(python)
-        {
-            WorkingDirectory = repo, UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            StandardInputEncoding = new UTF8Encoding(false)
-        };
-        info.ArgumentList.Add("-B");
-        info.ArgumentList.Add(Path.Combine(repo, "prototypes", "DayNest.Glass", "calendar_bridge.py"));
-        info.ArgumentList.Add(command);
-        using var process = Process.Start(info) ?? throw new InvalidOperationException();
-        workers.Add(process);
-        try
-        {
-            var stdout = process.StandardOutput.ReadToEndAsync();
-            var stderr = process.StandardError.ReadToEndAsync();
-            if (payload != null) await process.StandardInput.WriteAsync(JsonSerializer.Serialize(payload));
-            process.StandardInput.Close();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(
-                command is "edit-event" or "delete-event" ? 90 : 20));
-            try { await process.WaitForExitAsync(timeout.Token); }
-            catch { if (!process.HasExited) process.Kill(true); throw; }
-            string output = await stdout;
-            await stderr;
-            if (process.ExitCode != 0) throw new InvalidOperationException();
-            using var document = JsonDocument.Parse(output);
-            return document.RootElement.Clone();
-        }
-        finally { workers.Remove(process); }
-    }
+    Task<JsonElement> AccountRequest(string command, object? payload = null) => BridgeRequest(command, payload);
 
     async Task ShowSettings()
     {
         if (settingsOpen || detailsOpen || writeBusy || closed) return;
         settingsOpen = true;
-        var original = new Appearance(dark, glassDensity, glassEnabled);
+        CancelMonthRequests();
+        var original = new Appearance(dark, glassDensity, glassEnabled, desktopMode);
         bool appearanceSaved = false, accountSaved = false, saving = false, accountLoaded = false;
         var message = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 13 };
         var dialog = new ContentDialog
@@ -69,15 +35,18 @@ sealed partial class CalendarApp
         var theme = new ComboBox { Header = "界面主题", HorizontalAlignment = HorizontalAlignment.Stretch };
         theme.Items.Add("深色"); theme.Items.Add("浅色"); theme.SelectedIndex = dark ? 0 : 1;
         var glassToggle = new ToggleSwitch { Header = "毛玻璃效果", IsOn = glassEnabled };
+        var desktopToggle = new ToggleSwitch { Header = "桌面小组件模式", IsOn = desktopMode };
         var densityLabel = new TextBlock { Text = $"玻璃浓度 {glassDensity * 100:0}%" };
         var density = new Slider { Minimum = 15, Maximum = 80, Value = glassDensity * 100, StepFrequency = 1 };
         AutomationProperties.SetName(density, "玻璃浓度");
-        appearance.Children.Add(theme); appearance.Children.Add(glassToggle);
+        appearance.Children.Add(theme); appearance.Children.Add(desktopToggle); appearance.Children.Add(glassToggle);
+        appearance.Children.Add(new TextBlock { Text = "桌面模式下拖动 DayNest 标题调整位置，Win+D 后仍显示；关闭此选项恢复普通窗口。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         appearance.Children.Add(densityLabel); appearance.Children.Add(density);
         appearance.Children.Add(new TextBlock { Text = "即时预览；保存后下次启动沿用。取消会恢复原来的外观。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         void Preview()
         {
             dark = theme.SelectedIndex == 0; glassEnabled = glassToggle.IsOn; glassDensity = density.Value / 100;
+            desktopMode = desktopToggle.IsOn;
             density.IsEnabled = glassEnabled;
             densityLabel.Text = $"玻璃浓度 {density.Value:0}%";
             ApplyAppearance();
@@ -85,6 +54,7 @@ sealed partial class CalendarApp
         }
         theme.SelectionChanged += (_, _) => Preview();
         glassToggle.Toggled += (_, _) => Preview();
+        desktopToggle.Toggled += (_, _) => Preview();
         density.ValueChanged += (_, _) => Preview();
         density.IsEnabled = glassEnabled;
 
@@ -156,7 +126,7 @@ sealed partial class CalendarApp
                 {
                     try
                     {
-                        PreviewSettings.Save(new Appearance(dark, glassDensity, glassEnabled));
+                        PreviewSettings.Save(new Appearance(dark, glassDensity, glassEnabled, desktopMode));
                         appearanceSaved = true; e.Cancel = false;
                     }
                     catch { message.Text = "外观保存失败，请检查本地文件权限后重试。"; }
@@ -165,7 +135,7 @@ sealed partial class CalendarApp
                 if (!accountLoaded) { message.Text = "请关闭设置后重试读取账户信息。"; return; }
                 var deferral = e.GetDeferral();
                 saving = true; appearanceTab.IsEnabled = accountTab.IsEnabled = accountPage.IsEnabled = false; dialog.IsPrimaryButtonEnabled = false;
-                requestCancellation?.Cancel(); generation++; refresh.IsEnabled = false;
+                CancelMonthRequests(); refresh.IsEnabled = false;
                 try
                 {
                     var response = await AccountRequest("save-account", new
@@ -197,10 +167,11 @@ sealed partial class CalendarApp
             password.Password = "";
             if (!appearanceSaved && !closed)
             {
-                dark = original.Dark; glassDensity = original.Density; glassEnabled = original.Glass; ApplyAppearance();
+                dark = original.Dark; glassDensity = original.Density; glassEnabled = original.Glass;
+                desktopMode = original.Desktop; ApplyAppearance();
             }
             settingsOpen = false;
         }
-        if (accountSaved && !closed) await Load(true);
+        if (!closed) await Load(accountSaved);
     }
 }

@@ -19,7 +19,8 @@ internal static class Program {
 }
 sealed record Entry(DateTimeOffset Start, DateTimeOffset End, string Title, string Calendar, bool AllDay, string Notes, string? Handle=null, bool Editable=false, bool Deletable=false, string? PinHandle=null, string? Key=null);
 sealed record Pin(string Title, DateTimeOffset Start, string? ActionHandle=null, string? Key=null);
-sealed record Result(Entry[]? Events, string? Status, string? Error, Pin[]? Pins);
+sealed record Result(Entry[]? Events, string? Status, string? Error, Pin[]? Pins,
+ bool HasCache=false, bool Configured=false, double SyncedAt=0, string? Warning=null);
 public sealed partial class CalendarApp : Application {
  public CalendarApp(){
   UnhandledException+=(_,e)=>{
@@ -43,18 +44,31 @@ public sealed partial class CalendarApp : Application {
  double glassDensity=.42;
  bool dark=true;
  bool glassEnabled=true;
+ bool desktopMode=true;
+ bool windowActive;
+ DesktopWidget? desktopWidget;
+ Button exitWidget=null!;
  readonly Button refresh=new(){Content="刷新"};
  readonly Dictionary<string,Result> months=new();
  readonly HashSet<Process> workers=new();
  DateTime selected=DateTime.Today;
  int generation; bool closed;
  protected override void OnLaunched(LaunchActivatedEventArgs args) {
-  var saved=PreviewSettings.Load();dark=saved.Dark;glassDensity=saved.Density;glassEnabled=saved.Glass;
+  var saved=PreviewSettings.Load();dark=saved.Dark;glassDensity=saved.Density;glassEnabled=saved.Glass;desktopMode=saved.Desktop;
+  if(Environment.GetCommandLineArgs().Contains("--normal-window"))desktopMode=false;
+  if(Environment.GetCommandLineArgs().Contains("--desktop-check"))desktopMode=true;
   window=new Window{Title="DayNest · 分层玻璃日历",SystemBackdrop=glass};
-  window.Activated+=(_,e)=>glass.SetActive(e.WindowActivationState!=WindowActivationState.Deactivated);
+  window.Activated+=(_,e)=>{windowActive=e.WindowActivationState!=WindowActivationState.Deactivated;glass.SetActive(desktopMode||windowActive);};
   window.AppWindow.Closing+=(_,e)=>{if(writeBusy){e.Cancel=true;closeAfterWrite=true;}};
   page.RequestedTheme=ElementTheme.Dark;
-  page.Children.Add(new TextBlock{Text="DayNest",FontSize=30,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
+  var header=new Grid();header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+  var dragRegion=new Grid{Background=Color(0,0,0,0),MinHeight=44};
+  dragRegion.Children.Add(new TextBlock{Text="DayNest",FontSize=30,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});header.Children.Add(dragRegion);
+  exitWidget=new Button{Content="×",Width=32,Height=32,Padding=new Thickness(0),VerticalAlignment=VerticalAlignment.Center};
+  AutomationProperties.SetName(exitWidget,"退出 DayNest");ToolTipService.SetToolTip(exitWidget,"退出 DayNest");exitWidget.Click+=(_,_)=>window.Close();
+  Grid.SetColumn(exitWidget,1);header.Children.Add(exitWidget);page.Children.Add(header);
+  var create=new Button{Content="+ 日程",HorizontalAlignment=HorizontalAlignment.Left};
+  create.Click+=async(_,_)=>await ShowNewEvent();page.Children.Add(create);
   var actions=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};
   var today=new Button{Content="今日"}; var settings=new Button{Content="设置"};
   today.Click+=async(_,_)=>{monthOverview=false;calendar.Visibility=Visibility.Collapsed;selected=DateTime.Today;DrawCalendar();await Load(false);};
@@ -65,11 +79,17 @@ public sealed partial class CalendarApp : Application {
   page.Children.Add(pinned);page.Children.Add(calendar);page.Children.Add(status);page.Children.Add(agenda);
   surface=new ScrollViewer{Content=page,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
   rim=new Border{Child=surface,BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8)};
-  window.Content=rim;ApplyAppearance();
+  window.Content=rim;
+  desktopWidget=new DesktopWidget(window,dragRegion,error=>{desktopMode=false;exitWidget.Visibility=Visibility.Collapsed;status.Text=error;},!stressMode&&!Environment.GetCommandLineArgs().Any(a=>a is "--desktop-check" or "--calendar-flow-check"));
+  ApplyAppearance();
   window.AppWindow.Resize(new Windows.Graphics.SizeInt32(440,800));
-  window.Closed+=(_,_)=>{closed=true;generation++;requestCancellation?.Cancel();foreach(var p in workers.ToArray())try{if(!p.HasExited)p.Kill(true);}catch{}};
-  window.Activate(); _=Load(false);
+  desktopWidget.RestorePosition();
+  window.Closed+=(_,_)=>{desktopWidget?.Dispose();closed=true;StopCalendarLoading();foreach(var p in workers.ToArray())try{if(!p.HasExited)p.Kill(true);}catch{}};
+  if(Environment.GetCommandLineArgs().Contains("--calendar-flow-check"))PrepareCalendarFlowCheck();
+  window.Activate(); StartCalendarLoading();
+  if(Environment.GetCommandLineArgs().Contains("--calendar-flow-check"))RunCalendarFlowCheck();
   if(stressMode)RunRenderStress();
+  if(Environment.GetCommandLineArgs().Contains("--desktop-check"))RunDesktopCheck();
  }
  async void RunRenderStress(){
   var origin=window.AppWindow.Position;
@@ -96,6 +116,10 @@ public sealed partial class CalendarApp : Application {
   // The root theme also drives SystemBackdrop; a child-only theme leaves light glass behind white text.
   surface.RequestedTheme=page.RequestedTheme=dark?ElementTheme.Dark:ElementTheme.Light;
   rim.RequestedTheme=surface.RequestedTheme;
+  desktopWidget?.SetEnabled(desktopMode);
+  desktopMode=desktopWidget?.Enabled??desktopMode;
+  exitWidget.Visibility=desktopMode?Visibility.Visible:Visibility.Collapsed;
+  glass.SetActive(desktopMode||windowActive);
   window.SystemBackdrop=glassEnabled?glass:null;
   UpdateMaterial();
   surface.Foreground=dark?Color(255,238,243,250):Color(255,28,39,55);
@@ -152,34 +176,11 @@ public sealed partial class CalendarApp : Application {
   calendar.Children.Add(grid);
  }
  static string Repo(){var d=new DirectoryInfo(AppContext.BaseDirectory);while(d!=null){if(File.Exists(Path.Combine(d.FullName,"daynest.py")))return d.FullName;d=d.Parent;}throw new DirectoryNotFoundException();}
- async Task Load(bool sync){
-  if(writeBusy)return;
-  requestCancellation?.Cancel();
-  var key=selected.ToString("yyyy-MM");int token=++generation;
-  if(!sync&&months.TryGetValue(key,out var cached)){refresh.IsEnabled=true;Render(cached);return;}
-  refresh.IsEnabled=false;status.Text=sync?"正在同步本月…":"正在读取缓存…";
-  if(!months.ContainsKey(key)){agenda.Children.Clear();pinned.Children.Clear();}
-  using var request=new CancellationTokenSource(TimeSpan.FromMinutes(2));requestCancellation=request;
-  try{
-   var repo=Repo();var python=Path.Combine(repo,".venv","Scripts","python.exe");if(!File.Exists(python))python="python";
-   var info=new ProcessStartInfo(python){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=repo};
-   info.ArgumentList.Add("-B");info.ArgumentList.Add(Path.Combine(repo,"prototypes","DayNest.Glass","calendar_bridge.py"));info.ArgumentList.Add(key);if(sync)info.ArgumentList.Add("--refresh");
-   using var p=Process.Start(info)??throw new InvalidOperationException();workers.Add(p);string output;
-   try{var stdout=p.StandardOutput.ReadToEndAsync();var stderr=p.StandardError.ReadToEndAsync();
-    try{await p.WaitForExitAsync(request.Token);}catch{if(!p.HasExited)p.Kill(true);throw;}
-    output=await stdout;await stderr;if(p.ExitCode!=0)throw new InvalidOperationException();
-   }finally{workers.Remove(p);}
-   if(closed||token!=generation)return;
-   var result=JsonSerializer.Deserialize<Result>(output,new JsonSerializerOptions{PropertyNameCaseInsensitive=true})??throw new InvalidOperationException();
-   if(result.Error!=null){status.Text=result.Error;return;}months[key]=result;Render(result);
-  }catch{if(!closed&&token==generation)status.Text="读取失败，请检查 Python 环境或网络。";}
-  finally{if(ReferenceEquals(requestCancellation,request))requestCancellation=null;if(!closed&&token==generation)refresh.IsEnabled=true;}
- }
  internal static bool OccursOn(Entry e,DateTime day)=>e.Start.LocalDateTime.Date<=day.Date&&(e.End>e.Start?e.End.LocalDateTime>day.Date:e.Start.LocalDateTime.Date==day.Date);
  internal static bool OccursInMonth(Entry e,DateTime month){var start=new DateTime(month.Year,month.Month,1);return e.Start.LocalDateTime<start.AddMonths(1)&&(e.End>e.Start?e.End.LocalDateTime>start:e.Start.LocalDateTime>=start);}
  void Render(Result data){
   DrawCalendar();RenderPins(data.Pins??[]);
-  agenda.Children.Clear();status.Text=data.Status;
+  agenda.Children.Clear();status.Text=string.Join(" · ",new[]{data.Status,data.Warning}.Where(s=>!string.IsNullOrWhiteSpace(s)));
   agenda.Children.Add(new TextBlock{Text=selected.ToString(monthOverview?"yyyy 年 M 月日程":"M 月 d 日"),FontSize=22});
   var entries=(data.Events??[]).Where(e=>monthOverview?OccursInMonth(e,selected):OccursOn(e,selected)).ToArray();
   foreach(var e in entries){
@@ -193,6 +194,6 @@ public sealed partial class CalendarApp : Application {
    card.Click+=async(_,_)=>await ShowEventDetails(e);
    agenda.Children.Add(card);
   }
-  if(entries.Length==0)agenda.Children.Add(new TextBlock{Text=monthOverview?"本月暂无日程":"当天暂无日程",Opacity=.65});
+  if(entries.Length==0)agenda.Children.Add(new TextBlock{Text=data.HasCache?(monthOverview?"本月暂无日程":"当天暂无日程"):"暂无完整缓存，联网同步后显示日程",Opacity=.65});
  }
 }

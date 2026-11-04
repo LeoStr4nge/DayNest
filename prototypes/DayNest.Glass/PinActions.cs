@@ -11,7 +11,7 @@ sealed partial class CalendarApp
     {
         if (writeBusy || closed) return false;
         writeBusy = true;
-        requestCancellation?.Cancel(); generation++; refresh.IsEnabled = false;
+        CancelMonthRequests(); refresh.IsEnabled = false;
         try
         {
             var response = await AccountRequest(command, new { handle });
@@ -50,6 +50,7 @@ sealed partial class CalendarApp
                 remove.IsEnabled = false;
                 try { await ChangePin("remove-pin", pin.ActionHandle, status); }
                 finally { remove.IsEnabled = true; FinishWrite(); }
+                if (!closed) await Load(false);
             };
             pinned.Children.Add(card);
         }

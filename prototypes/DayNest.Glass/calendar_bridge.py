@@ -1,4 +1,4 @@
-import json, sys
+import json, sys, time, uuid
 from pathlib import Path
 from datetime import datetime
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -179,22 +179,113 @@ def mutate_event(payload, delete=False):
     finally:
         guard.close()
 
+def calendar_choices(payload=None):
+    config = c.load_config()
+    if not config.get('username') or not config.get('password'):
+        raise ValueError('请先在设置中填写日历账户并同步。')
+    cache = c.load_cache()
+    calendars = cache.get('calendars', []) if c.cache_matches(cache, config) else []
+    if not calendars and not (payload or {}).get('cachedOnly'):
+        client = c.CalDAV(config['username'], c.unprotect(config['password']), connection=c.connection_config(config))
+        calendars = client.discover()
+    return dict(calendars=[dict(name=name, handle=c.protect(json.dumps(dict(
+        purpose='create-calendar', username=config['username'], connection=c.connection_config(config),
+        url=url, name=name)))) for url, name in calendars])
+
+
+def create_event(payload):
+    guard = c.SingleInstance()
+    try:
+        if not guard.acquire():
+            raise ValueError('请先退出原版 DayNest，再添加日程。')
+        config = c.load_config()
+        try:
+            token = json.loads(c.unprotect(payload['handle']))
+        except (ValueError, KeyError, TypeError):
+            raise ValueError('日历信息无效，请重新打开添加日程。')
+        if token.get('purpose') != 'create-calendar' or token.get('username') != config.get('username') or token.get('connection') != c.connection_config(config):
+            raise ValueError('日历账户已改变，请重新打开添加日程。')
+        title = str(payload.get('title', '')).strip()
+        if not title:
+            raise ValueError('日程标题不能为空。')
+        try:
+            start, end = (datetime.fromisoformat(payload[key]) for key in ('start', 'end'))
+            if start.tzinfo is None or end.tzinfo is None or end <= start:
+                raise ValueError()
+            request_id = str(uuid.UUID(payload['requestId']))
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise ValueError('日期时间无效，结束时间必须晚于开始时间。')
+        notes = str(payload.get('notes', ''))
+        uid, raw = c.new_event_ics(title, start, end, notes, uid=request_id)
+        client = c.CalDAV(config['username'], c.unprotect(config['password']), connection=c.connection_config(config))
+        href = token['url'].rstrip('/') + '/' + uid + '.ics'
+        # A stable UID per form plus If-None-Match prevents duplicate creation
+        # when the first response is lost and the user retries the same form.
+        client.put_event(href, raw, create=True)
+        warning = None
+        try:
+            cache = c.load_cache()
+            if not c.cache_matches(cache, config):
+                cache = dict(username=config['username'], connection=c.connection_config(config), pins=[])
+            cache['months'] = {}
+            meta = dict(raw=raw, uid=uid, href=href, etag=None, calendar_url=token['url'],
+                        end=end.isoformat(), description=notes, duration_seconds=(end-start).total_seconds())
+            row = c.serialize_events([(start, title, token['name'], False, meta)])[0]
+            cache['events'] = [e for e in cache.get('events', []) if e[4].get('href') != href] + [row]
+            cache['resource_cache'] = [r for r in cache.get('resource_cache', []) if r.get('href') != href]
+            c.save_cache(cache)
+        except Exception:
+            warning = '日程已添加到服务器，但本地缓存未能更新；请刷新确认，不要重复添加。'
+        return dict(ok=True, warning=warning)
+    finally:
+        guard.close()
+
+
 def read_month(month, refresh=False):
-    config=c.load_config(); cache=c.load_cache()
-    if not c.cache_matches(cache,config): cache={}
-    start=datetime.strptime(month,'%Y-%m').replace(tzinfo=c.LOCAL_TZ)
-    end=datetime.combine(c.shift_month(start.date(),1),datetime.min.time(),c.LOCAL_TZ)
-    events=c.deserialize_events(cache.get('months',{}).get(month,{}).get('events',cache.get('events',[])))
-    status='本地缓存 · 刷新可获取本月日程'
-    if refresh:
-        if not config.get('username') or not config.get('password'): return dict(events=[],pins=[],status='请打开设置，填写日历账户后同步')
-        client=c.CalDAV(config['username'],c.unprotect(config['password']),c.ResourceCache(cache,config['username']),connection=c.connection_config(config))
-        events=[]
-        for url,name in client.discover():
-            for resource in client.events(url,start,end): events.extend(c.parse_events(resource['raw'],name,start,end,resource,url))
-        status='本月日程已同步'
-    pins=pin_views(cache, config)
-    return dict(status=status,pins=pins,events=[event_view(e, config) for e in sorted(events,key=lambda e:e[0])])
+    # Serialize a whole refresh against account changes, edits, pins and the Tk
+    # app. The UI cancels/awaits reads before writing, so no stale snapshot can
+    # overwrite a successful write. Terminating a read releases the OS mutex.
+    guard = c.SingleInstance() if refresh else None
+    try:
+        if guard and not guard.acquire():
+            raise ValueError('请先退出原版 DayNest 或其他正在同步的实例，再同步日历。')
+        config = c.load_config(); cache = c.load_cache()
+        if not c.cache_matches(cache, config): cache = {}
+        configured = bool(config.get('username') and config.get('password'))
+        start = datetime.strptime(month, '%Y-%m').replace(tzinfo=c.LOCAL_TZ)
+        end = datetime.combine(c.shift_month(start.date(), 1), datetime.min.time(), c.LOCAL_TZ)
+        entry = cache.get('months', {}).get(month)
+        events = c.deserialize_events(entry.get('events', []) if entry is not None else cache.get('events', []))
+        synced_at = entry.get('synced_at', 0) if entry is not None else 0
+        status = '显示本地缓存' if entry is not None else '本月尚未完整同步'
+        warning = None
+        if refresh and configured:
+            resources = c.ResourceCache(cache, config['username'])
+            client = c.CalDAV(config['username'], c.unprotect(config['password']), resources, connection=c.connection_config(config))
+            calendars = cache.get('calendars', [])
+            discovered_at = cache.get('discovered_at', 0)
+            if not calendars or time.time() - discovered_at >= 86400:
+                calendars = client.discover(); discovered_at = time.time()
+            events = []
+            for url, name in calendars:
+                for resource in client.events(url, start, end):
+                    events.extend(c.parse_events(resource['raw'], name, start, end, resource, url))
+            # Commit only after every calendar succeeds. Preserve pins and the
+            # other months; reuse the original encrypted/atomic cache format.
+            synced_at = time.time()
+            entry = dict(events=c.serialize_events(events), synced_at=synced_at)
+            cache = dict(cache, username=config['username'], connection=c.connection_config(config),
+                         calendars=calendars, discovered_at=discovered_at, resource_cache=resources.snapshot(),
+                         months=c.persistent_months(dict(cache.get('months', {}), **{month: entry})))
+            try: c.save_cache(cache)
+            except (OSError, ValueError): warning = '日程已同步，但缓存保存失败；重启后需要重新同步。'
+            status = '已同步 · ' + datetime.now().strftime('%H:%M')
+        if not configured: status = '请打开设置，填写日历账户后同步'
+        return dict(status=status, pins=pin_views(cache, config), configured=configured,
+                    hasCache=entry is not None, syncedAt=synced_at, warning=warning,
+                    events=[event_view(e, config) for e in sorted(events, key=lambda e: e[0])])
+    finally:
+        if guard: guard.close()
 
 if __name__ == '__main__':
     try:
@@ -204,8 +295,10 @@ if __name__ == '__main__':
         elif sys.argv[1] == 'delete-event': result = mutate_event(json.load(sys.stdin), delete=True)
         elif sys.argv[1] == 'add-pin': result = set_pin(json.load(sys.stdin))
         elif sys.argv[1] == 'remove-pin': result = set_pin(json.load(sys.stdin), remove=True)
+        elif sys.argv[1] == 'get-calendars': result = calendar_choices(json.load(sys.stdin))
+        elif sys.argv[1] == 'create-event': result = create_event(json.load(sys.stdin))
         else: result=read_month(sys.argv[1], '--refresh' in sys.argv)
     except ValueError as error:
-        result = dict(error=str(error)) if sys.argv[1] in ('save-account', 'edit-event', 'delete-event', 'add-pin', 'remove-pin') else dict(error='读取失败，请检查日历设置和网络。')
+        result = dict(error=str(error))
     except Exception: result=dict(error='读取失败，请检查账户、网络及 Python 依赖。')
     print(json.dumps(result,ensure_ascii=True))

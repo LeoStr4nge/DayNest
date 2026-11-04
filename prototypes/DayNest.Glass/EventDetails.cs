@@ -6,20 +6,23 @@ namespace DayNest.Glass;
 sealed partial class CalendarApp
 {
     bool detailsOpen, writeBusy, closeAfterWrite;
+    string? writeWarning;
 
     async Task<bool> WriteEvent(string command, object payload, TextBlock message)
     {
         writeBusy = true;
+        CancelMonthRequests(); writeWarning = null;
         message.Text = command == "delete-event" ? "正在删除日程，请稍候…" : "正在保存日程，请稍候…";
         try
         {
             var response = await AccountRequest(command, payload);
             if (response.TryGetProperty("error", out var error)) { message.Text = error.GetString(); return false; }
             if (!response.TryGetProperty("ok", out var ok) || !ok.GetBoolean()) throw new InvalidOperationException();
+            if (response.TryGetProperty("warning", out var warning)) writeWarning = warning.GetString();
             return true;
         }
         catch { message.Text = "未能确认服务器操作结果，请刷新日历确认后再试。"; return false; }
-        finally { writeBusy = false; }
+        finally { writeBusy = false; if (!closed) refresh.IsEnabled = true; }
     }
 
     void FinishWrite()
@@ -31,6 +34,7 @@ sealed partial class CalendarApp
     {
         if (detailsOpen || settingsOpen || writeBusy || closed) return;
         detailsOpen = true;
+        CancelMonthRequests();
         bool editing = false, changed = false, saving = false;
         var title = new TextBox { Header = "日程标题", Text = entry.Title, IsReadOnly = true };
         var start = new EventDateTimeField("开始", entry.Start.LocalDateTime);
@@ -152,6 +156,8 @@ sealed partial class CalendarApp
         {
             months.Clear(); agenda.Children.Clear(); pinned.Children.Clear(); DrawCalendar();
             await Load(true);
+            if (writeWarning != null) status.Text += " · " + writeWarning;
         }
+        else if (!closed) await Load(false);
     }
 }

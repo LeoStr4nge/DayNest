@@ -1,0 +1,206 @@
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
+using Microsoft.UI.Xaml;
+
+namespace DayNest.Glass;
+
+static class MonthPolicy
+{
+    public static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
+    public static bool Fresh(Result data, DateTimeOffset now) => data.HasCache &&
+        now.ToUnixTimeMilliseconds() / 1000d - data.SyncedAt is >= 0 and < 600;
+    public static string[] Neighbors(DateTime month) => new[] { month.AddMonths(-1), month.AddMonths(1), DateTime.Today }
+        .Select(d => d.ToString("yyyy-MM")).Where(k => k != month.ToString("yyyy-MM")).Distinct().ToArray();
+}
+
+sealed class CalendarReadException(string message) : Exception(message);
+
+sealed partial class CalendarApp
+{
+    readonly SemaphoreSlim bridgeGate = new(1, 1);
+    CancellationTokenSource? prefetchCancellation;
+    readonly DispatcherTimer syncTimer = new() { Interval = MonthPolicy.RefreshInterval };
+    readonly DispatcherTimer dayTimer = new() { Interval = TimeSpan.FromMinutes(1) };
+    DateTime lastToday = DateTime.Today;
+    Task? startupLoad;
+    Func<string, bool, CancellationToken, Task<Result>>? monthReaderOverride;
+    bool AutomaticNetwork => !stressMode && !Environment.GetCommandLineArgs().Any(a =>
+        a is "--desktop-check" or "--offline-preview");
+
+    void StartCalendarLoading()
+    {
+        syncTimer.Tick += async (_, _) => await AutoSync();
+        dayTimer.Tick += async (_, _) =>
+        {
+            if (closed || writeBusy || settingsOpen || detailsOpen) return;
+            if (lastToday != DateTime.Today)
+            {
+                lastToday = DateTime.Today;
+                if (calendar.Visibility == Visibility.Collapsed) { selected = lastToday; await Load(false); return; }
+                DrawCalendar();
+            }
+            if (months.TryGetValue(selected.ToString("yyyy-MM"), out var data)) RenderPins(data.Pins ?? []);
+        };
+        if (AutomaticNetwork) syncTimer.Start();
+        dayTimer.Start();
+        startupLoad = Load(true); // Render disk cache first, then always refresh at startup.
+    }
+
+    async Task AutoSync()
+    {
+        if (!closed && !writeBusy && !settingsOpen && !detailsOpen && requestCancellation == null) await Load(true);
+    }
+
+    void CancelMonthRequests()
+    {
+        generation++;
+        requestCancellation?.Cancel();
+        prefetchCancellation?.Cancel();
+        if (!closed) refresh.IsEnabled = !writeBusy;
+    }
+
+    void StopCalendarLoading()
+    {
+        syncTimer.Stop(); dayTimer.Stop(); CancelMonthRequests();
+    }
+
+    // One process at a time, including writes. A cancelled read is fully reaped
+    // before releasing the gate, so its Windows mutex cannot block the write.
+    async Task<JsonElement> BridgeRequest(string command, object? payload = null,
+        CancellationToken cancellation = default, bool sync = false)
+    {
+        await bridgeGate.WaitAsync(cancellation);
+        try
+        {
+            if (closed) throw new OperationCanceledException();
+            string repo = Repo();
+            string python = Path.Combine(repo, ".venv", "Scripts", "python.exe");
+            if (!File.Exists(python)) python = "python";
+            var info = new ProcessStartInfo(python)
+            {
+                WorkingDirectory = repo, UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+                StandardInputEncoding = new UTF8Encoding(false)
+            };
+            info.ArgumentList.Add("-B");
+            info.ArgumentList.Add(Path.Combine(repo, "prototypes", "DayNest.Glass", "calendar_bridge.py"));
+            info.ArgumentList.Add(command);
+            if (sync) info.ArgumentList.Add("--refresh");
+            using var process = Process.Start(info) ?? throw new InvalidOperationException();
+            workers.Add(process);
+            try
+            {
+                var stdout = process.StandardOutput.ReadToEndAsync();
+                var stderr = process.StandardError.ReadToEndAsync();
+                if (payload != null) await process.StandardInput.WriteAsync(JsonSerializer.Serialize(payload));
+                process.StandardInput.Close();
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+                timeout.CancelAfter(TimeSpan.FromSeconds(command is "save-account" or "get-account" or "add-pin" or "remove-pin" ? 20 : 120));
+                try { await process.WaitForExitAsync(timeout.Token); }
+                catch
+                {
+                    if (!process.HasExited) process.Kill(true);
+                    await process.WaitForExitAsync();
+                    await Task.WhenAll(stdout, stderr);
+                    throw;
+                }
+                string output = await stdout; await stderr;
+                if (process.ExitCode != 0) throw new InvalidOperationException();
+                using var document = JsonDocument.Parse(output);
+                return document.RootElement.Clone();
+            }
+            finally { workers.Remove(process); }
+        }
+        finally { bridgeGate.Release(); }
+    }
+
+    async Task<Result> ReadMonth(string key, bool sync, CancellationToken cancellation)
+    {
+        if (monthReaderOverride != null) return await monthReaderOverride(key, sync, cancellation);
+        var json = await BridgeRequest(key, cancellation: cancellation, sync: sync);
+        var data = json.Deserialize<Result>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            ?? throw new InvalidOperationException();
+        if (data.Error != null) throw new CalendarReadException(data.Error);
+        return data;
+    }
+
+    async Task Load(bool sync)
+    {
+        if (writeBusy || closed) return;
+        CancelMonthRequests();
+        int token = generation;
+        string key = selected.ToString("yyyy-MM");
+        using var request = new CancellationTokenSource(); requestCancellation = request;
+        bool prefetch = false;
+        refresh.IsEnabled = false;
+        if (months.TryGetValue(key, out var data)) Render(data);
+        else { agenda.Children.Clear(); status.Text = "正在读取本地缓存…"; }
+        try
+        {
+            if (data == null)
+            {
+                data = await ReadMonth(key, false, request.Token);
+                if (closed || token != generation) return;
+                months[key] = data; Render(data);
+            }
+            if (AutomaticNetwork && data.Configured && (sync || !MonthPolicy.Fresh(data, DateTimeOffset.UtcNow)))
+            {
+                status.Text = data.HasCache ? "显示缓存 · 正在同步…" : "正在同步本月日程…";
+                var latest = await ReadMonth(key, true, request.Token);
+                if (closed || token != generation) return;
+                months[key] = latest; Render(latest);
+            }
+            prefetch = data.Configured && AutomaticNetwork;
+            TrimMonthMemory();
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception error)
+        {
+            if (!closed && token == generation)
+                status.Text = (data?.HasCache == true ? "同步失败，保留缓存 · " : "未能同步 · ") +
+                    (error is CalendarReadException ? error.Message : "请检查网络及日历账户后重试。");
+        }
+        finally
+        {
+            if (ReferenceEquals(requestCancellation, request)) requestCancellation = null;
+            if (!closed && token == generation)
+            {
+                refresh.IsEnabled = true;
+                if (prefetch && !settingsOpen && !detailsOpen) _ = PrefetchMonths(selected, token);
+            }
+        }
+    }
+
+    async Task PrefetchMonths(DateTime center, int token)
+    {
+        using var request = new CancellationTokenSource(); prefetchCancellation = request;
+        try
+        {
+            foreach (string key in MonthPolicy.Neighbors(center))
+            {
+                request.Token.ThrowIfCancellationRequested();
+                if (closed || token != generation || writeBusy || settingsOpen || detailsOpen) return;
+                try
+                {
+                    if (!months.TryGetValue(key, out var data)) data = await ReadMonth(key, false, request.Token);
+                    if (data.Configured && !MonthPolicy.Fresh(data, DateTimeOffset.UtcNow)) data = await ReadMonth(key, true, request.Token);
+                    if (closed || token != generation) return;
+                    months[key] = data; DrawCalendar();
+                }
+                catch (OperationCanceledException) when (request.IsCancellationRequested) { return; }
+                catch { /* A failed neighbor never replaces the visible month's status or cache. */ }
+            }
+            TrimMonthMemory();
+        }
+        finally { if (ReferenceEquals(prefetchCancellation, request)) prefetchCancellation = null; }
+    }
+
+    void TrimMonthMemory()
+    {
+        var today = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        var keep = Enumerable.Range(-6, 13).Select(i => today.AddMonths(i).ToString("yyyy-MM"))
+            .Concat(MonthPolicy.Neighbors(selected)).Append(selected.ToString("yyyy-MM")).ToHashSet();
+        foreach (string key in months.Keys.Where(k => !keep.Contains(k)).ToArray()) months.Remove(key);
+    }
+}

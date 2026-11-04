@@ -1188,8 +1188,8 @@ def ics_time(value):
     return value.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
 
 
-def new_event_ics(title, start, end, description=''):
-    uid = str(uuid.uuid4())
+def new_event_ics(title, start, end, description='', *, uid=None):
+    uid = str(uuid.UUID(uid)) if uid is not None else str(uuid.uuid4())
     now = ics_time(datetime.now(timezone.utc))
     raw = fold_ics_lines([
         'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//DayNest//ZH',
