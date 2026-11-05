@@ -184,6 +184,7 @@ public sealed partial class CalendarApp : Application {
   surface.Background=Color(0,0,0,0);
  }
  void DrawCalendar(){
+  if(calendar.Visibility!=Visibility.Visible)return;
   calendar.Children.Clear();
   var heading=new Grid();heading.ColumnDefinitions.Add(new ColumnDefinition());heading.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
   heading.Children.Add(new TextBlock{Text=selected.ToString("yyyy 年 M 月"),FontSize=20,VerticalAlignment=VerticalAlignment.Center});
@@ -202,7 +203,7 @@ public sealed partial class CalendarApp : Application {
   var first=new DateTime(selected.Year,selected.Month,1);var start=first.AddDays(-((int)first.DayOfWeek+6)%7);
   for(int i=0;i<42;i++){
    var date=start.AddDays(i);bool chosen=date==selected;
-   var dayEvents=months.TryGetValue(date.ToString("yyyy-MM"),out var dayData)?(dayData.Events??[]).Count(e=>OccursOn(e,date)):0;
+   var dayEvents=MonthIndex(date.ToString("yyyy-MM")).On(date).Count;
    var dayContent=new StackPanel{Spacing=0,HorizontalAlignment=HorizontalAlignment.Center};
    dayContent.Children.Add(new TextBlock{Text=date.Day.ToString(),HorizontalAlignment=HorizontalAlignment.Center});
    dayContent.Children.Add(new TextBlock{Text=dayEvents>0?"•":"",FontSize=10,Height=8,HorizontalAlignment=HorizontalAlignment.Center});
@@ -225,8 +226,8 @@ public sealed partial class CalendarApp : Application {
   agenda.Children.Clear();status.Text=string.Join(" · ",new[]{data.Status,data.Warning,startupNotice}.Where(s=>!string.IsNullOrWhiteSpace(s)));
   if(recentOverview){RenderRecent();return;}
   agenda.Children.Add(new TextBlock{Text=selected.ToString(monthOverview?"yyyy 年 M 月日程":"M 月 d 日"),FontSize=22});
-  var entries=(data.Events??[]).Where(e=>monthOverview?OccursInMonth(e,selected):OccursOn(e,selected)).ToArray();
+  IReadOnlyList<Entry> entries=monthOverview?(data.Events??[]).Where(e=>OccursInMonth(e,selected)).ToArray():MonthIndex(selected.ToString("yyyy-MM")).On(selected);
   foreach(var e in entries)agenda.Children.Add(EventCard(e,monthOverview));
-  if(entries.Length==0)agenda.Children.Add(new TextBlock{Text=data.HasCache?(monthOverview?"本月暂无日程":"当天暂无日程"):"暂无完整缓存，联网同步后显示日程",Opacity=.65});
+  if(entries.Count==0)agenda.Children.Add(new TextBlock{Text=data.HasCache?(monthOverview?"本月暂无日程":"当天暂无日程"):"暂无完整缓存，联网同步后显示日程",Opacity=.65});
  }
 }

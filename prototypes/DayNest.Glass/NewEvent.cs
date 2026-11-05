@@ -113,7 +113,7 @@ sealed partial class CalendarApp
         finally { readCancellation.Cancel(); detailsOpen = false; if (!closed) ApplyAppearance(); }
         if (created && !closed)
         {
-            months.Clear(); DrawCalendar(); await Load(true);
+            ClearMonths(); DrawCalendar(); await Load(true);
             if (writeWarning != null) status.Text += " · " + writeWarning;
         }
         else if (!closed) await Load(false);

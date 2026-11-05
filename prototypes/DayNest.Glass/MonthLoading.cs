@@ -10,7 +10,7 @@ static class MonthPolicy
     public static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
     public static bool Fresh(Result data, DateTimeOffset now) => data.HasCache &&
         now.ToUnixTimeMilliseconds() / 1000d - data.SyncedAt is >= 0 and < 600;
-    public static string[] Neighbors(DateTime month) => new[] { month.AddMonths(-1), month.AddMonths(1), DateTime.Today }
+    public static string[] Neighbors(DateTime month) => new[] { month.AddMonths(-1), month.AddMonths(1) }
         .Select(d => d.ToString("yyyy-MM")).Where(k => k != month.ToString("yyyy-MM")).Distinct().ToArray();
 }
 
@@ -181,7 +181,7 @@ sealed partial class CalendarApp
                     }
                 }
             }
-            prefetch = data.Configured && AutomaticNetwork;
+            prefetch = calendar.Visibility == Visibility.Visible && data.Configured && AutomaticNetwork;
             TrimMonthMemory();
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
@@ -197,7 +197,7 @@ sealed partial class CalendarApp
             if (!closed && token == generation)
             {
                 refresh.IsEnabled = true;
-                if (prefetch && !settingsOpen && !detailsOpen) _ = PrefetchMonths(selected, token);
+                if (prefetch && calendar.Visibility == Visibility.Visible && !settingsOpen && !detailsOpen) _ = PrefetchMonths(selected, token);
             }
         }
     }
@@ -210,7 +210,7 @@ sealed partial class CalendarApp
             foreach (string key in MonthPolicy.Neighbors(center))
             {
                 request.Token.ThrowIfCancellationRequested();
-                if (closed || token != generation || writeBusy || settingsOpen || detailsOpen) return;
+                if (closed || token != generation || calendar.Visibility != Visibility.Visible || writeBusy || settingsOpen || detailsOpen) return;
                 try
                 {
                     if (!months.TryGetValue(key, out var data)) data = await ReadMonth(key, false, request.Token);
@@ -231,6 +231,9 @@ sealed partial class CalendarApp
         var today = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         var keep = Enumerable.Range(-6, 13).Select(i => today.AddMonths(i).ToString("yyyy-MM"))
             .Concat(MonthPolicy.Neighbors(selected)).Append(selected.ToString("yyyy-MM")).ToHashSet();
-        foreach (string key in months.Keys.Where(k => !keep.Contains(k)).ToArray()) months.Remove(key);
+        foreach (string key in months.Keys.Where(k => !keep.Contains(k)).ToArray())
+        {
+            months.Remove(key); dayIndexes.Remove(key);
+        }
     }
 }

@@ -81,9 +81,36 @@ static class PrototypeChecks
             var spanning = overnight with { Start = At(monthStart.AddHours(-1)), End = At(monthStart.AddHours(1)) };
             Check(CalendarApp.OccursInMonth(spanning, monthStart), "Monthly view must include events crossing into the month");
             Check(!CalendarApp.OccursInMonth(spanning with { End = At(monthStart) }, monthStart), "Monthly view must exclude events ending at its start");
-            var duplicated = new Result([spanning], "", null, []);
-            Check(CalendarApp.RecentEntries([duplicated, duplicated]).Length == 1, "Cross-month recent view must deduplicate spanning events");
-            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "self-test.txt"), "PASS: theme/accent contrast and persistence, startup quoting/enable/disable/rollback, appearance/position recovery, atomic save, cache expiry and cross-year/day/month views");
+            var deduped = EventDayIndex.Build([spanning, spanning], monthStart, monthStart.AddDays(8), true);
+            Check(deduped.On(monthStart).Count == 1, "Cross-month recent view must deduplicate spanning events");
+            var longEvent = overnight with { Start = At(day.AddYears(-5)), End = At(day.AddYears(5)), Key = "long" };
+            var allDay = overnight with { Start = At(day), End = At(day.AddDays(2)), AllDay = true, Key = "all-day" };
+            var backwards = instant with { End = instant.Start.AddHours(-1), Key = "backwards" };
+            var entries = new List<Entry> { overnight, midnight, instant, spanning, longEvent, allDay, backwards };
+            var random = new Random(42);
+            for (int i = 0; i < 500; i++)
+            {
+                var start = At(monthStart.AddDays(random.Next(-30, 65)).AddMinutes(random.Next(1440)));
+                entries.Add(new(start, start.AddMinutes(random.Next(-60, 6000)), $"event-{i}", "test", false, "", Key: $"event-{i}"));
+            }
+            foreach (var first in new[] { monthStart.AddMonths(-1), monthStart, monthStart.AddMonths(1) })
+            {
+                var end = first.AddMonths(1);
+                var index = EventDayIndex.Build(entries, first, end);
+                for (var date = first; date < end; date = date.AddDays(1))
+                {
+                    var expected = entries.Where(e => CalendarApp.OccursOn(e, date)).OrderBy(e => e.Start).ThenBy(e => e.Title);
+                    Check(index.On(date).SequenceEqual(expected), "Date index must match occurrence rules, ordering and long/overnight/instant/all-day events");
+                }
+                Check(index.On(first.AddDays(-1)).Count == 0 && index.On(end).Count == 0, "Date index must be bounded to its requested range");
+            }
+            var boundary = new DateTime(2026, 12, 31);
+            var yearEvent = instant with { Start = At(boundary.AddHours(23)), End = At(boundary.AddDays(1).AddHours(1)) };
+            var yearIndex = EventDayIndex.Build([yearEvent], boundary, boundary.AddDays(8));
+            Check(yearIndex.On(boundary).Count == 1 && yearIndex.On(boundary.AddDays(1)).Count == 1, "Date index must span year boundaries");
+            Check(EventDayIndex.Build([allDay], day, day.AddDays(3)).On(day.AddDays(2)).Count == 0, "Exclusive all-day end must not mark the next day");
+            Check(MonthPolicy.Neighbors(DateTime.Today.AddMonths(12)).Length == 2 && !MonthPolicy.Neighbors(DateTime.Today.AddMonths(12)).Contains(DateTime.Today.ToString("yyyy-MM")), "Remote month prefetch must not request the unrelated current month");
+            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "self-test.txt"), "PASS: theme/accent contrast and persistence, startup rollback, appearance/position recovery, cache expiry, bounded date index equivalence for 507 events, midnight/all-day/instant/cross-year handling and recent deduplication");
         }
         finally
         {

@@ -190,7 +190,7 @@ sealed partial class CalendarApp
                     else
                     {
                         password.Password = ""; accountSaved = true;
-                        months.Clear(); agenda.Children.Clear(); pinned.Children.Clear(); DrawCalendar();
+                        ClearMonths(); agenda.Children.Clear(); pinned.Children.Clear(); DrawCalendar();
                         e.Cancel = false;
                     }
                 }

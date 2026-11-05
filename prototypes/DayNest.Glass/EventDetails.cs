@@ -157,7 +157,7 @@ sealed partial class CalendarApp
         finally { detailsOpen = false; featureDetailsDialog = null; if (!closed) ApplyAppearance(); }
         if (changed && !closed)
         {
-            months.Clear(); agenda.Children.Clear(); pinned.Children.Clear(); DrawCalendar();
+            ClearMonths(); agenda.Children.Clear(); pinned.Children.Clear(); DrawCalendar();
             await Load(true);
             if (writeWarning != null) status.Text += " · " + writeWarning;
         }
