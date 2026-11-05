@@ -57,6 +57,14 @@ def build(version, crt, crt_licenses, replace=False):
             for path in package.glob('*'):
                 if path.is_file() and path.name.lower().startswith(('license', 'notice', 'thirdpartynotice')):
                     shutil.copy2(path, licenses / (library.replace('/', '-') + '-' + path.name))
+    frameworks = json.loads((bundle / 'DayNest.Glass.runtimeconfig.json').read_text())['runtimeOptions']['includedFrameworks']
+    for framework in frameworks:
+        package = framework['name'].lower() + '.runtime.win-x64'
+        for name in ('LICENSE.TXT', 'THIRD-PARTY-NOTICES.TXT'):
+            candidates = [Path(folder) / package / framework['version'] / name for folder in assets['packageFolders']]
+            source = next((p for p in candidates if p.is_file()), None)
+            if source is None: raise RuntimeError('Missing bundled .NET runtime license: ' + name)
+            shutil.copy2(source, licenses / (package + '-' + name))
     (bundle / 'README.txt').write_text(
         f'DayNest {version} — WinUI 玻璃日历\n\n'
         '要求：Windows 11 x64（build 22000 或更新）。无需单独安装 Python、.NET 或 Windows App SDK。\n'
