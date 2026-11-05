@@ -16,7 +16,7 @@ def save_account(payload):
     guard = c.SingleInstance()
     try:
         if not guard.acquire():
-            raise ValueError('请先退出原版 DayNest，再修改日历账户。')
+            raise ValueError('DayNest 正在同步或保存数据，请稍后再修改日历账户。')
         config = c.load_config()
         username = str(payload.get('username', '')).strip()
         password = payload.get('password', '')
@@ -125,7 +125,7 @@ def set_pin(payload, remove=False):
     guard = c.SingleInstance()
     try:
         if not guard.acquire():
-            raise ValueError('请先退出原版 DayNest，再修改固定倒计时。')
+            raise ValueError('DayNest 正在同步或保存数据，请稍后再修改固定倒计时。')
         config = c.load_config()
         try:
             token = json.loads(c.unprotect(payload['handle']))
@@ -157,7 +157,7 @@ def mutate_event(payload, delete=False):
     guard = c.SingleInstance()
     try:
         if not guard.acquire():
-            raise ValueError('请先退出原版 DayNest，再修改日程。')
+            raise ValueError('DayNest 正在同步或保存数据，请稍后再修改日程。')
         config = c.load_config()
         try:
             token = json.loads(c.unprotect(payload['handle']))
@@ -238,7 +238,7 @@ def create_event(payload):
     guard = c.SingleInstance()
     try:
         if not guard.acquire():
-            raise ValueError('请先退出原版 DayNest，再添加日程。')
+            raise ValueError('DayNest 正在同步或保存数据，请稍后再添加日程。')
         config = c.load_config()
         try:
             token = json.loads(c.unprotect(payload['handle']))
@@ -283,13 +283,14 @@ def create_event(payload):
 
 
 def read_month(month, refresh=False, sync_pins=True):
-    # Serialize a whole refresh against account changes, edits, pins and the Tk
-    # app. The UI cancels/awaits reads before writing, so no stale snapshot can
-    # overwrite a successful write. Terminating a read releases the OS mutex.
+    # Serialize a whole refresh against account changes, edits, pins and other
+    # backend processes (including historical versions). The UI cancels/awaits
+    # reads before writing, so no stale snapshot can overwrite a successful
+    # write. Terminating a read releases the OS mutex.
     guard = c.SingleInstance() if refresh else None
     try:
         if guard and not guard.acquire():
-            raise ValueError('请先退出原版 DayNest 或其他正在同步的实例，再同步日历。')
+            raise ValueError('DayNest 正在同步或保存数据，请稍后再同步日历。')
         config = c.load_config(); cache = c.load_cache()
         if not c.cache_matches(cache, config): cache = {}
         configured = bool(config.get('username') and config.get('password'))
@@ -335,7 +336,7 @@ def read_month(month, refresh=False, sync_pins=True):
 if __name__ == '__main__':
     try:
         if sys.argv[1] == '--runtime-check':
-            import dateutil, tkinter
+            import dateutil
             result = dict(ok=c.unprotect(c.protect('DayNest release check')) == 'DayNest release check',
                           frozen=bool(getattr(sys, 'frozen', False)), python=sys.version.split()[0], dateutil=dateutil.__version__)
         elif sys.argv[1] == 'get-account': result = account_settings()

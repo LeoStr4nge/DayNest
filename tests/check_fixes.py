@@ -1,8 +1,6 @@
 import importlib.util
 from pathlib import Path
-from datetime import datetime
 import ssl
-import tkinter as tk
 from urllib.error import URLError, HTTPError
 from unittest.mock import patch, MagicMock
 
@@ -34,29 +32,4 @@ with patch.object(m, 'get_logger', return_value=MagicMock()), patch.object(m.tim
                 pass
             assert read.call_count == 1
 
-root = tk.Tk()
-m.apply_theme(root)
-root.geometry('360x580')
-a = m.App.__new__(m.App)
-a.root = root
-a.pins_frame = tk.Frame(root)
-a.pins_frame.pack(fill='x')
-a.status = tk.Label(root, text='同步状态')
-a.status.pack(fill='x')
-a.save_pins = lambda: None
-start = datetime.now(m.LOCAL_TZ)
-event = (start, '测试固定日程', '个人', False, {'href': 'https://caldav.icloud.com/test.ics'})
-a.pins = []
-a.toggle_pin(event)
-root.update()
-pinned_y = a.status.winfo_y()
-a.remove_pin(m.event_key(event))
-root.update()
-assert a.pins_frame.winfo_manager() == ''
-assert a.status.winfo_y() < pinned_y
-a.toggle_pin(event)
-root.update()
-assert a.pins_frame.winfo_manager() == 'pack'
-assert a.status.winfo_y() == pinned_y
-root.destroy()
-print('Pin layout and transient read retry checks passed.')
+print('Transient read retry checks passed.')

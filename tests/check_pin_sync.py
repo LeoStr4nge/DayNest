@@ -1,8 +1,7 @@
 """Offline checks for pinned event tracking and authoritative query handling."""
 from pathlib import Path
 import sys
-import threading
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -73,62 +72,4 @@ except ValueError:
 else:
     raise AssertionError('Incomplete responses must preserve existing pins')
 
-app = m.App.__new__(m.App)
-app.config = {'username': 'test'}
-app.sync_token = object()
-app.pins = [pin]
-app.cache = {}
-app.cache_lock = threading.Lock()
-app.resources = Mock(return_value=Mock(snapshot=Mock(return_value=[])))
-app.finish = Mock()
-with patch.object(m, 'save_cache'):
-    app.apply_sync(object(), 'test', [], [], 0, 0, [(pin, None)])
-    assert app.pins == [pin]
-    app.apply_sync(app.sync_token, 'other', [], [], 0, 0, [(pin, None)])
-    assert app.pins == [pin]
-    app.apply_sync(app.sync_token, 'test', [], [], 0, 0, [(pin, updated)])
-    assert app.pins[0]['title'] == 'After'
-    assert app.cache['pins'] == app.pins
-    assert app.pinned_event(app.pins[0])[1] == 'After'
-    app.apply_sync(app.sync_token, 'test', [], [], 0, 0, [(pin, None)])
-    assert len(app.pins) == 1  # Old snapshot cannot remove a newer pin.
-    current = app.pins[0]
-    app.apply_sync(app.sync_token, 'test', [], [], 0, 0, [])
-    assert app.pins == [current]  # Failed lookups produce no updates.
-    app.apply_sync(app.sync_token, 'test', [], [], 0, 0, [(current, None)])
-    assert not app.pins and not app.cache['pins']
-    app.apply_sync(app.sync_token, 'test', [], [], 0, 0, [(current, updated)])
-    assert not app.pins  # Unpinning during a read cannot be undone.
-print('Pinned move, deletion, recurrence, legacy identity, protocol and stale-result checks passed.')
-
-# Exercise the real background refresh path: query failure must not fail the
-# recent-events sync or remove pins, and multiple instances share one lookup.
-import queue
-import time
-for fail in (False, True):
-    worker_app = m.App.__new__(m.App)
-    worker_app.config = {'username': 'test', 'password': 'fake'}
-    worker_app.cache = {'username': 'test', 'calendars': [(URL, 'Calendar')],
-                        'discovered_at': time.time()}
-    worker_app.pins = [pin, dict(pin, key='another-pin')]
-    worker_app.syncing = worker_app.write_busy = False
-    worker_app.closed = threading.Event()
-    worker_app.status = Mock()
-    worker_app.resources = Mock(return_value=m.ResourceCache())
-    posted = queue.Queue()
-    worker_app.post = lambda *args: posted.put(args)
-    fake = Mock()
-    fake.events.return_value = []
-    fake.pinned_resources.return_value = [moved]
-    if fail:
-        fake.pinned_resources.side_effect = OSError('offline')
-    with patch.object(m, 'CalDAV', return_value=fake), \
-         patch.object(m, 'unprotect', return_value='fake'), \
-         patch.object(m, 'get_logger', return_value=Mock()):
-        worker_app.refresh()
-        result = posted.get(timeout=5)
-    assert result[0] == worker_app.apply_sync
-    updates = result[-1]
-    assert len(updates) == (0 if fail else 2)
-    fake.pinned_resources.assert_called_once_with(URL, 'pin-test')
-print('Background refresh deduplication and failure preservation checks passed.')
+print('Pinned move, deletion, recurrence, legacy identity and protocol checks passed.')

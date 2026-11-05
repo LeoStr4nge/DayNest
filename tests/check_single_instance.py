@@ -5,7 +5,6 @@ import os
 import signal
 import sys
 import uuid
-from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import daynest as m
@@ -42,41 +41,6 @@ def check():
             child.wait(timeout=5)
         child.stdin.close()
         child.stdout.close()
-
-    with patch.object(m, 'SingleInstance') as factory, \
-         patch.object(m, 'App') as app, \
-         patch.object(m, 'startup_message') as message, \
-         patch.object(m, 'load_config', return_value={}) as load, \
-         patch.object(m, 'save_config') as save:
-        guard_mock = factory.return_value
-        guard_mock.acquire.return_value = False
-        assert m.main(restore_window=True) == 0
-        app.assert_not_called()
-        load.assert_not_called()
-        save.assert_not_called()
-        message.assert_called_once()
-        guard_mock.close.assert_called_once()
-        guard_mock.reset_mock()
-        guard_mock.acquire.side_effect = OSError('mutex unavailable')
-        assert m.main() == 1
-        app.assert_not_called()
-        guard_mock.close.assert_called_once()
-        guard_mock.reset_mock()
-        guard_mock.acquire.side_effect = None
-        guard_mock.acquire.return_value = True
-        assert m.main(restore_window=True) == 0
-        save.assert_called_once_with({'desktop': False})
-        app.return_value.run.assert_called_once()
-        guard_mock.close.assert_called_once()
-        guard_mock.reset_mock()
-        app.return_value.run.side_effect = RuntimeError('startup failed')
-        try:
-            m.main()
-        except RuntimeError:
-            pass
-        else:
-            raise AssertionError('Expected startup failure')
-        guard_mock.close.assert_called_once()
     print('Single-instance checks passed.')
 
 

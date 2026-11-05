@@ -28,7 +28,7 @@ def build(version, crt, crt_licenses, replace=False):
         '-p:PublishTrimmed=false', '-p:DebugType=None', '-p:DebugSymbols=false', '-p:Version=' + version, '-o', bundle, '--nologo')
     run(sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN',
         '--name', 'DayNest.Bridge', '--console', '--onedir', '--paths', ROOT,
-        '--hidden-import', 'dateutil.zoneinfo', '--distpath', stage / 'python',
+        '--hidden-import', 'dateutil.zoneinfo', '--exclude-module', 'tkinter', '--distpath', stage / 'python',
         '--workpath', stage / 'work', '--specpath', stage,
         ROOT / 'prototypes/DayNest.Glass/calendar_bridge.py')
     shutil.copytree(stage / 'python/DayNest.Bridge', bundle / 'backend')
@@ -45,11 +45,6 @@ def build(version, crt, crt_licenses, replace=False):
         found = [p for p in distribution.files or [] if '.dist-info' in str(p) and p.name.upper().startswith(('LICENSE', 'COPYING'))]
         if not found: raise RuntimeError('Missing license: ' + package)
         for i, path in enumerate(found): shutil.copy2(distribution.locate_file(path), licenses / f'{package}-{i}.txt')
-    for name in ('tcl8.6', 'tk8.6'):
-        source = Path(sys.base_prefix) / 'tcl' / name / 'license.terms'
-        if not source.exists(): source = ROOT / 'packaging/licenses' / (name + '-license.terms')
-        if not source.exists(): raise RuntimeError('Missing license: ' + name)
-        shutil.copy2(source, licenses / (name + '-license.terms'))
     assets = json.loads((ROOT / 'prototypes/DayNest.Glass/obj/project.assets.json').read_text(encoding='utf-8'))
     for library in assets['libraries']:
         for folder in assets['packageFolders']:
@@ -73,7 +68,7 @@ def build(version, crt, crt_licenses, replace=False):
         '恢复普通窗口：运行 DayNest.Glass.exe --normal-window。\n'
         '首次使用在设置中填写日历账户；iCloud 使用 App 专用密码。\n'
         '账户和日程保存在 %APPDATA%\\DayNest；外观和位置在 %LOCALAPPDATA%\\DayNest。\n'
-        '与原版共享账户/缓存，请先退出原版；不支持同时进行写入。\n'
+        '账户和缓存兼容历史版本，更新前请先退出旧版本。\n'
         '支持单次非全天日程新增/编辑，删除含确认；重复日程请在日历服务中修改。\n'
         '此版本未进行代码签名。\n'
         '许可证：GPL-3.0-only；依赖许可见 licenses。\n'

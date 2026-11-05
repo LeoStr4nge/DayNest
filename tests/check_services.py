@@ -2,10 +2,8 @@
 from pathlib import Path
 from io import BytesIO
 import sys
-import tempfile
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
-import xml.etree.ElementTree as ET
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import daynest as m
 
@@ -123,75 +121,4 @@ assert not m.cache_matches(legacy, dict(CUSTOM, username='same-user'))
 assert not m.cache_matches({'username': 'same-user', 'connection': CUSTOM},
                            dict(CUSTOM, username='same-user', discovery_url='https://another.example/'))
 
-
-def descendants(widget):
-    for child in widget.winfo_children():
-        yield child
-        yield from descendants(child)
-
-
-def close(app):
-    for callback in app.root.tk.call('after', 'info'):
-        app.root.after_cancel(callback)
-    app.close()
-
-
-with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory, \
-     patch.object(m, 'CONFIG_FILE', Path(directory) / 'config.json'), \
-     patch.object(m, 'load_cache', return_value={}), patch.object(m, 'save_cache'), \
-     patch.object(m.App, 'refresh'), patch.object(m.App, 'set_autostart'), \
-     patch.object(m, 'protect', return_value='encrypted-test'), \
-     patch.object(m, 'get_logger', return_value=Mock()), patch.object(m.messagebox, 'showerror') as error:
-    m.save_config({'username': 'same-user', 'password': 'old', 'desktop': False})
-    app = m.App()
-    try:
-        app.root.update()
-        app.settings()
-        app.root.update()
-        dialog = next(iter(app.modal_windows))
-        widgets = {w.winfo_name(): w for w in descendants(dialog)}
-        provider = widgets['provider']
-        assert provider.get() == 'iCloud'
-        assert not widgets['discovery_url'].winfo_manager()
-        provider.current(1)
-        provider.event_generate('<<ComboboxSelected>>')
-        notebook = next(w for w in descendants(dialog) if isinstance(w, m.ttk.Notebook))
-        notebook.select(1)
-        app.root.update()
-        assert widgets['discovery_url'].winfo_ismapped()
-        widgets['discovery_url'].insert(0, CUSTOM['discovery_url'])
-        save = next(w for w in descendants(dialog) if isinstance(w, m.ttk.Button) and w.cget('text') == '保存并同步')
-        assert save.winfo_ismapped()
-        assert save.winfo_rooty() + save.winfo_height() <= dialog.winfo_rooty() + dialog.winfo_height()
-        assert widgets['password'].winfo_rooty() + widgets['password'].winfo_height() < save.winfo_rooty()
-        save.invoke()
-        assert error.call_count == 1 and app.config.get('provider', 'icloud') == 'icloud'
-        widgets['password'].insert(0, 'new-password')
-        old_token = app.sync_token = object()
-        old_generation = app.month_generation
-        old_resources = app.resource_cache
-        app.events = [('old',)]
-        app.month_cache = {'old': {}}
-        save.invoke()
-        app.root.update()
-        assert not app.modal_windows
-        assert app.config['provider'] == 'custom'
-        assert app.config['password'] == 'encrypted-test'
-        assert app.resource_cache is not old_resources
-        assert not app.events and not app.month_cache and not app.calendars
-        assert app.month_generation > old_generation
-        app.apply_sync(old_token, 'same-user', [('stale',)], [], 0, 0)
-        assert not app.events
-        app.month_loaded('2026-01', [('stale',)], 'same-user', old_generation)
-        assert not app.month_cache
-        assert m.load_config()['discovery_url'] == CUSTOM['discovery_url']
-        assert app.cache['connection']['provider'] == 'custom'
-    finally:
-        close(app)
-    with patch.object(m, 'load_cache', return_value=dict(legacy, calendars=[('old', 'old')], pins=[{'key': 'old'}])):
-        restarted = m.App()
-        try:
-            assert not restarted.calendars and not restarted.pins
-        finally:
-            close(restarted)
-print('Service presets, custom discovery, redirects, trusted origins, reads/writes, cache isolation and settings checks passed.')
+print('Service discovery, origin policy, redirects, reads/writes and cache isolation checks passed.')

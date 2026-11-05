@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml;
 namespace DayNest.Glass;
 
 // Keep WinUI top-level: parenting its HWND to Explorer can break XAML/backdrops.
-// Show Desktop is handled by a small UI-thread poll, like the original Tk app.
+// Show Desktop is handled by a small UI-thread poll.
 sealed class DesktopWidget : IDisposable
 {
     readonly Window window;
