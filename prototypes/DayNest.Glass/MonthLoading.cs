@@ -57,6 +57,7 @@ sealed partial class CalendarApp
         generation++;
         requestCancellation?.Cancel();
         prefetchCancellation?.Cancel();
+        if (!closed) SetRefreshBusy(false);
         if (!closed) refresh.IsEnabled = !writeBusy;
     }
 
@@ -145,6 +146,7 @@ sealed partial class CalendarApp
         string key = selected.ToString("yyyy-MM");
         using var request = new CancellationTokenSource(); requestCancellation = request;
         bool prefetch = false;
+        SetRefreshBusy(true);
         refresh.IsEnabled = false;
         if (months.TryGetValue(key, out var data)) Render(data);
         else { agenda.Children.Clear(); status.Text = "正在读取本地缓存…"; }
@@ -196,6 +198,7 @@ sealed partial class CalendarApp
             if (ReferenceEquals(requestCancellation, request)) requestCancellation = null;
             if (!closed && token == generation)
             {
+                SetRefreshBusy(false);
                 refresh.IsEnabled = true;
                 if (prefetch && calendar.Visibility == Visibility.Visible && !settingsOpen && !detailsOpen) _ = PrefetchMonths(selected, token);
             }

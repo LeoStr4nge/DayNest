@@ -92,16 +92,15 @@ public sealed partial class CalendarApp : Application {
   var create=new Button{Content="+ 日程",HorizontalAlignment=HorizontalAlignment.Left};
   create.Click+=async(_,_)=>await ShowNewEvent();page.Children.Add(create);
   var actions=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};
-  var today=new Button{Content="今日"}; var settings=new Button{Content="设置"};
-  var recent=new Button{Content="近期"};
-  ToolTipService.SetToolTip(recent,"查看今天及未来七天的日程");
-  AutomationProperties.SetName(recent,"近期日程：今天及未来七天");
-  today.Click+=async(_,_)=>{recentOverview=false;monthOverview=false;calendar.Visibility=Visibility.Collapsed;selected=DateTime.Today;DrawCalendar();await Load(false);};
-  recent.Click+=async(_,_)=>{recentOverview=true;monthOverview=false;calendar.Visibility=Visibility.Collapsed;selected=DateTime.Today;DrawCalendar();await Load(false);};
-  monthButton.Click+=async(_,_)=>{recentOverview=false;monthOverview=true;calendar.Visibility=Visibility.Visible;selected=DateTime.Today;DrawCalendar();await Load(false);};
+  var settings=new Button{Content="设置"};
+  ToolTipService.SetToolTip(recentButton,"查看今天及未来七天的日程");
+  todayButton.Click+=async(_,_)=>{recentOverview=false;monthOverview=false;calendar.Visibility=Visibility.Collapsed;selected=DateTime.Today;DrawCalendar(true);await Load(false);};
+  recentButton.Click+=async(_,_)=>{recentOverview=true;monthOverview=false;calendar.Visibility=Visibility.Collapsed;selected=DateTime.Today;DrawCalendar(true);await Load(false);};
+  monthButton.Click+=async(_,_)=>{recentOverview=false;monthOverview=true;calendar.Visibility=Visibility.Visible;selected=DateTime.Today;DrawCalendar(true);await Load(false);};
   settings.Click+=async(_,_)=>await ShowSettings();
   refresh.Click+=async(_,_)=>await Load(true);
-  actions.Children.Add(today);actions.Children.Add(recent);actions.Children.Add(monthButton);actions.Children.Add(refresh);actions.Children.Add(settings);page.Children.Add(actions);
+  actions.Children.Add(CreateViewSelector());actions.Children.Add(refresh);actions.Children.Add(settings);page.Children.Add(actions);
+  UpdateViewSelector();SetRefreshBusy(false);
   page.Children.Add(pinned);page.Children.Add(calendar);page.Children.Add(status);page.Children.Add(agenda);
   surface=new ScrollViewer{Content=page,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
   var layout=new Grid();layout.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});layout.RowDefinitions.Add(new RowDefinition());
@@ -183,7 +182,8 @@ public sealed partial class CalendarApp : Application {
   }else rim.Background=Brush(palette.Background);
   surface.Background=Color(0,0,0,0);
  }
- void DrawCalendar(){
+ void DrawCalendar(bool animateSelection=false){
+  UpdateViewSelector(animateSelection);
   if(calendar.Visibility!=Visibility.Visible)return;
   calendar.Children.Clear();
   var heading=new Grid();heading.ColumnDefinitions.Add(new ColumnDefinition());heading.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
@@ -191,7 +191,7 @@ public sealed partial class CalendarApp : Application {
   var navigation=new StackPanel{Orientation=Orientation.Horizontal,Spacing=6};
   foreach(int delta in new[]{-1,1}){
    var arrow=new Button{Content=delta<0?"‹":"›",Width=36,Padding=new Thickness(0)};
-   arrow.Click+=async(_,_)=>{recentOverview=false;monthOverview=true;selected=new DateTime(selected.Year,selected.Month,1).AddMonths(delta);DrawCalendar();await Load(false);};
+   arrow.Click+=async(_,_)=>{recentOverview=false;monthOverview=true;selected=new DateTime(selected.Year,selected.Month,1).AddMonths(delta);DrawCalendar(true);await Load(false);};
    navigation.Children.Add(arrow);
   }
   Grid.SetColumn(navigation,1);heading.Children.Add(navigation);calendar.Children.Add(heading);
@@ -213,7 +213,7 @@ public sealed partial class CalendarApp : Application {
     BorderBrush=date==DateTime.Today?Brush(palette.AccentInk):Color(0,0,0,0),BorderThickness=new Thickness(date==DateTime.Today?1:0),Opacity=date.Month==selected.Month?1:.4};
    var dayName=$"{date:yyyy-MM-dd} · {dayEvents} 项日程";
    ToolTipService.SetToolTip(button,dayName);AutomationProperties.SetName(button,dayName);
-   button.Click+=async(_,_)=>{recentOverview=false;monthOverview=false;selected=date;DrawCalendar();await Load(false);};
+   button.Click+=async(_,_)=>{recentOverview=false;monthOverview=false;selected=date;DrawCalendar(true);await Load(false);};
    Grid.SetColumn(button,i%7);Grid.SetRow(button,i/7+1);grid.Children.Add(button);
   }
   calendar.Children.Add(grid);

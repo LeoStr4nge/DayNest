@@ -91,7 +91,7 @@ def build(version, crt, crt_licenses, replace=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', default='2.0.0')
+    parser.add_argument('--version', default='2.0.1')
     parser.add_argument('--crt-dir', type=Path, required=True, help='Visual Studio x64 Microsoft.VC*.CRT redistributable directory')
     parser.add_argument('--crt-license-dir', type=Path, required=True, help='Visual Studio Licenses/<locale> directory')
     parser.add_argument('--replace', action='store_true', help='Replace a reviewed, unpublished artifact')

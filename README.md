@@ -6,9 +6,9 @@ DayNest 是面向 Windows 11 x64 的中文桌面日历小组件。当前主界�
 
 ## 安装与启动
 
-下载 [v2.0.0 WinUI 便携版](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.0.0)，完整解压后双击 `DayNest.Glass.exe`。包内附带运行环境，无需另装 Python 或 .NET。需要 Windows 11 x64（build 22000 或更新），目前没有 WinUI 安装向导。
+下载 [v2.0.1 WinUI 便携版](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.0.1)，完整解压后双击 `DayNest.Glass.exe`。包内附带运行环境，无需另装 Python 或 .NET。需要 Windows 11 x64（build 22000 或更新），目前没有 WinUI 安装向导。
 
-当前发布版本未进行代码签名。可使用发布页的 `SHA256SUMS.txt` 核对下载文件。v2.0.0 标签保留发布时的代码；主分支的清理不会修改已发布文件。
+当前发布版本未进行代码签名。可使用发布页的 `SHA256SUMS.txt` 核对下载文件。历史版本的标签和压缩包继续保留。
 
 首次使用在 **设置 → 日历账户** 中选择日历服务、填写账户和密码，再点击“保存并同步”。iCloud 需使用 [Apple 账户](https://account.apple.com/)生成的 App 专用密码。
 
