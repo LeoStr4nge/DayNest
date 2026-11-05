@@ -65,6 +65,8 @@ public sealed partial class CalendarApp : Application {
  bool windowActive;
  DesktopWidget? desktopWidget;
  Button exitWidget=null!;
+ Grid widgetBar=null!;
+ readonly List<Border> dragLines=new();
  readonly Button refresh=new(){Content="刷新"};
  readonly Dictionary<string,Result> months=new();
  readonly HashSet<Process> workers=new();
@@ -78,12 +80,16 @@ public sealed partial class CalendarApp : Application {
   window.Activated+=(_,e)=>{windowActive=e.WindowActivationState!=WindowActivationState.Deactivated;glass.SetActive((desktopWidget?.Enabled??desktopMode)||windowActive);};
   window.AppWindow.Closing+=(_,e)=>{if(writeBusy){e.Cancel=true;closeAfterWrite=true;}};
   page.RequestedTheme=ElementTheme.Dark;
-  var header=new Grid();header.ColumnDefinitions.Add(new ColumnDefinition());header.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
-  var dragRegion=new Grid{Background=Color(0,0,0,0),MinHeight=44};
-  dragRegion.Children.Add(new TextBlock{Text="DayNest",FontSize=30,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});header.Children.Add(dragRegion);
-  exitWidget=new Button{Content="×",Width=32,Height=32,Padding=new Thickness(0),VerticalAlignment=VerticalAlignment.Center};
+  widgetBar=new Grid{MinHeight=36};widgetBar.ColumnDefinitions.Add(new ColumnDefinition());widgetBar.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(40)});
+  var dragRegion=new Grid{Background=Color(0,0,0,0),MinHeight=36};
+  var grip=new StackPanel{Spacing=4,Width=24,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(40,0,0,0),Opacity=.65};
+  for(int i=0;i<3;i++){var line=new Border{Height=2,CornerRadius=new CornerRadius(1)};dragLines.Add(line);grip.Children.Add(line);}
+  dragRegion.Children.Add(grip);widgetBar.Children.Add(dragRegion);
+  AutomationProperties.SetName(dragRegion,"拖动窗口");ToolTipService.SetToolTip(dragRegion,"按住顶部横线区域拖动窗口");
+  page.Children.Add(new TextBlock{Text="DayNest",FontSize=30,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
+  exitWidget=new Button{Content="×",Width=28,Height=28,Padding=new Thickness(0),BorderThickness=new Thickness(0),Background=Color(0,0,0,0),VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Left};
   AutomationProperties.SetName(exitWidget,"退出 DayNest");ToolTipService.SetToolTip(exitWidget,"退出 DayNest");exitWidget.Click+=(_,_)=>window.Close();
-  Grid.SetColumn(exitWidget,1);header.Children.Add(exitWidget);page.Children.Add(header);
+  Grid.SetColumn(exitWidget,1);widgetBar.Children.Add(exitWidget);
   var create=new Button{Content="+ 日程",HorizontalAlignment=HorizontalAlignment.Left};
   create.Click+=async(_,_)=>await ShowNewEvent();page.Children.Add(create);
   var actions=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};
@@ -99,7 +105,9 @@ public sealed partial class CalendarApp : Application {
   actions.Children.Add(today);actions.Children.Add(recent);actions.Children.Add(monthButton);actions.Children.Add(refresh);actions.Children.Add(settings);page.Children.Add(actions);
   page.Children.Add(pinned);page.Children.Add(calendar);page.Children.Add(status);page.Children.Add(agenda);
   surface=new ScrollViewer{Content=page,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
-  rim=new Border{Child=surface,BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8)};
+  var layout=new Grid();layout.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});layout.RowDefinitions.Add(new RowDefinition());
+  layout.Children.Add(widgetBar);Grid.SetRow(surface,1);layout.Children.Add(surface);
+  rim=new Border{Child=layout,BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8)};
   window.Content=rim;
   desktopWidget=new DesktopWidget(window,dragRegion,error=>{desktopMode=false;exitWidget.Visibility=Visibility.Collapsed;status.Text=error;},!DiagnosticMode);
   ApplyAppearance();
@@ -149,6 +157,9 @@ public sealed partial class CalendarApp : Application {
    desktopMode=desktopWidget?.Enabled??desktopMode;
   }
   bool actualDesktop=desktopWidget?.Enabled??desktopMode;
+  widgetBar.Visibility=actualDesktop?Visibility.Visible:Visibility.Collapsed;
+  page.Padding=new Thickness(24,actualDesktop?8:24,24,24);
+  foreach(var line in dragLines)line.Background=Brush(palette.Text);
   exitWidget.Visibility=actualDesktop?Visibility.Visible:Visibility.Collapsed;
   glass.SetActive(actualDesktop||windowActive);
   window.SystemBackdrop=glassEnabled?glass:null;
@@ -169,8 +180,9 @@ public sealed partial class CalendarApp : Application {
    var veil=new LinearGradientBrush{StartPoint=new Windows.Foundation.Point(0,0),EndPoint=new Windows.Foundation.Point(0,1)};
    veil.GradientStops.Add(new GradientStop{Offset=0,Color=Tint((byte)(glassDensity*150),palette.Background).Color});
    veil.GradientStops.Add(new GradientStop{Offset=1,Color=Tint((byte)(glassDensity*200),palette.Background).Color});
-   surface.Background=veil;
-  }else surface.Background=Brush(palette.Background);
+   rim.Background=veil;
+  }else rim.Background=Brush(palette.Background);
+  surface.Background=Color(0,0,0,0);
  }
  void DrawCalendar(){
   calendar.Children.Clear();

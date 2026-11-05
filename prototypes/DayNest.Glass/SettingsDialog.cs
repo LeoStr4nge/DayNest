@@ -59,7 +59,7 @@ sealed partial class CalendarApp
         AutomationProperties.SetName(density, "玻璃浓度");
         appearance.Children.Add(theme); appearance.Children.Add(new TextBlock { Text = "主题颜色" }); appearance.Children.Add(colorRow);
         appearance.Children.Add(autoStartToggle); appearance.Children.Add(desktopToggle); appearance.Children.Add(glassToggle);
-        appearance.Children.Add(new TextBlock { Text = "桌面模式下拖动 DayNest 标题调整位置，Win+D 后仍显示；关闭此选项恢复普通窗口。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
+        appearance.Children.Add(new TextBlock { Text = "桌面模式下按住顶部三横线区域拖动，Win+D 后仍显示；关闭此选项恢复普通窗口。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         appearance.Children.Add(densityLabel); appearance.Children.Add(density);
         appearance.Children.Add(new TextBlock { Text = "主题与玻璃效果即时预览；桌面模式在关闭设置后切换。保存后下次启动沿用，取消恢复原外观。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         void Preview()

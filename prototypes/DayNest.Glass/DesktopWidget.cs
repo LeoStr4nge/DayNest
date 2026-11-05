@@ -17,6 +17,7 @@ sealed class DesktopWidget : IDisposable
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     readonly Action<string> reportError;
     readonly bool persistPlacement;
+    readonly SubclassProcedure frameProcedure;
     readonly DispatcherTimer placementTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     bool? raised;
     public bool Enabled { get; private set; }
@@ -29,6 +30,8 @@ sealed class DesktopWidget : IDisposable
         this.window = window; this.dragRegion = dragRegion; this.reportError = reportError;
         this.persistPlacement = persistPlacement;
         hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        frameProcedure = WindowProcedure;
+        if (!SetWindowSubclass(hwnd, frameProcedure, 1, 0)) throw new Win32Exception(Marshal.GetLastPInvokeError());
         timer.Tick += (_, _) => Poll();
         placementTimer.Tick += (_, _) => { placementTimer.Stop(); SavePosition(); };
         window.AppWindow.Changed += WindowChanged;
@@ -75,6 +78,7 @@ sealed class DesktopWidget : IDisposable
                 throw new InvalidOperationException("窗口类型不支持桌面模式");
             if (enabled)
             {
+                Enabled = true;
                 window.ExtendsContentIntoTitleBar = true;
                 window.SetTitleBar(dragRegion);
                 presenter.IsMinimizable = false; presenter.IsMaximizable = false;
@@ -153,11 +157,63 @@ sealed class DesktopWidget : IDisposable
 
     public void Dispose()
     {
+        RemoveWindowSubclass(hwnd, frameProcedure, 1);
         timer.Stop();
         placementTimer.Stop();
         window.AppWindow.Changed -= WindowChanged;
         window.AppWindow.Closing -= WindowClosing;
     }
+
+    nint WindowProcedure(nint target, uint message, nuint wParam, nint lParam, nuint id, nuint data)
+    {
+        // Hide the complete non-client frame in widget mode. Keeping the
+        // thick-frame style retains normal resizing; hiding only the title
+        // bar leaves a light resize strip above the XAML client area.
+        if (Enabled && message == 0x0083 && wParam != 0) return 0; // WM_NCCALCSIZE
+        if (Enabled && message == 0x0084) // WM_NCHITTEST: keep border resizing without painting a system frame.
+        {
+            GetWindowRect(target, out var bounds);
+            int x = unchecked((short)((long)lParam & 0xffff));
+            int y = unchecked((short)(((long)lParam >> 16) & 0xffff));
+            int edge = GetSystemMetricsForDpi(32, GetDpiForWindow(target)) + GetSystemMetricsForDpi(92, GetDpiForWindow(target));
+            bool left = x >= bounds.Left && x < bounds.Left + edge, right = x < bounds.Right && x >= bounds.Right - edge;
+            bool top = y >= bounds.Top && y < bounds.Top + edge, bottom = y < bounds.Bottom && y >= bounds.Bottom - edge;
+            if (top) return left ? 13 : right ? 14 : 12;
+            if (bottom) return left ? 16 : right ? 17 : 15;
+            if (left) return 10;
+            if (right) return 11;
+        }
+        if (message == 0x0082) RemoveWindowSubclass(target, frameProcedure, id); // WM_NCDESTROY
+        return DefSubclassProc(target, message, wParam, lParam);
+    }
+
+    public int TopFrameInset
+    {
+        get
+        {
+            GetWindowRect(hwnd, out var bounds); var origin = new NativePoint(); ClientToScreen(hwnd, ref origin);
+            return origin.Y - bounds.Top;
+        }
+    }
+    public int HitTest(int x, int y)
+    {
+        GetWindowRect(hwnd, out var bounds);
+        return (int)SendMessageW(hwnd, 0x0084, 0, (nint)(((bounds.Top + y) << 16) | ((bounds.Left + x) & 0xffff)));
+    }
+    [StructLayout(LayoutKind.Sequential)] struct NativePoint { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] struct NativeRect { public int Left, Top, Right, Bottom; }
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    delegate nint SubclassProcedure(nint target, uint message, nuint wParam, nint lParam, nuint id, nuint data);
+    [DllImport("comctl32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool SetWindowSubclass(nint window, SubclassProcedure procedure, nuint id, nuint data);
+    [DllImport("comctl32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool RemoveWindowSubclass(nint window, SubclassProcedure procedure, nuint id);
+    [DllImport("comctl32.dll")] static extern nint DefSubclassProc(nint window, uint message, nuint wParam, nint lParam);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool GetWindowRect(nint window, out NativeRect bounds);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool ClientToScreen(nint window, ref NativePoint point);
+    [DllImport("user32.dll")] static extern nint SendMessageW(nint window, uint message, nuint wParam, nint lParam);
+    [DllImport("user32.dll")] static extern uint GetDpiForWindow(nint window);
+    [DllImport("user32.dll")] static extern int GetSystemMetricsForDpi(int index, uint dpi);
 
     [DllImport("user32.dll")] static extern nint GetForegroundWindow();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(nint window, StringBuilder name, int capacity);

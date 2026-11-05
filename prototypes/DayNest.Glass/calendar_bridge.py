@@ -334,7 +334,11 @@ def read_month(month, refresh=False, sync_pins=True):
 
 if __name__ == '__main__':
     try:
-        if sys.argv[1] == 'get-account': result = account_settings()
+        if sys.argv[1] == '--runtime-check':
+            import dateutil, tkinter
+            result = dict(ok=c.unprotect(c.protect('DayNest release check')) == 'DayNest release check',
+                          frozen=bool(getattr(sys, 'frozen', False)), python=sys.version.split()[0], dateutil=dateutil.__version__)
+        elif sys.argv[1] == 'get-account': result = account_settings()
         elif sys.argv[1] == 'save-account': result = save_account(json.load(sys.stdin))
         elif sys.argv[1] == 'edit-event': result = mutate_event(json.load(sys.stdin))
         elif sys.argv[1] == 'delete-event': result = mutate_event(json.load(sys.stdin), delete=True)

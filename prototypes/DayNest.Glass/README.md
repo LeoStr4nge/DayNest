@@ -13,6 +13,8 @@ dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=
 
 重新编译前先关闭该输出目录下运行的窗口。
 
+发布便携包：在已安装 PyInstaller 的 Windows x64 Python 环境运行 `python tools/build_glass_release.py --version 2.0.0`。脚本发布自带运行时的 .NET 前端并冻结 Python 后端，包不依赖源码目录。产物在 `release/`，附带 GPL 和第三方许可证、构建版本信息及 SHA-256 校验。发布说明见 `docs/release-v2.0.0.md`。
+
 ## 当前功能
 
 - 自定义日期网格、翻月、今天、单日安排与完整备注。
@@ -119,7 +121,9 @@ dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=
 
 ## 桌面小组件模式
 
-默认启用，可在“设置 → 外观与个性化 → 桌面小组件模式”中切换，点击“保存外观”记住选择，取消恢复原模式。桌面模式隐藏系统标题栏、任务栏和 Alt+Tab 项目；拖动 DayNest 标题调整位置，右上角 × 退出。位置单独保存在 `%LOCALAPPDATA%\DayNest\widget-position.json`，重启恢复；显示器布局变化时限制在最近显示器的工作区内。
+默认启用，可在“设置 → 外观与个性化 → 桌面小组件模式”中切换，点击“保存外观”记住选择，取消恢复原模式。桌面模式隐藏系统标题栏、任务栏和 Alt+Tab 项目；按住顶部固定的三横线区域拖动，右侧 × 退出。拖动区不随日程滚动，标题文字不再承担拖动操作。位置单独保存在 `%LOCALAPPDATA%\DayNest\widget-position.json`，重启恢复；显示器布局变化时限制在最近显示器的工作区内。
+
+桌面模式通过 `WM_NCCALCSIZE` 将客户区扩展到整个窗口，去除隐藏标题栏后残留的浅色顶部边条，同时保留原生缩放样式并处理边缘命中。普通窗口模式恢复系统框架。顶部拖动区与内容共用玻璃和渐变底色，关闭按钮位于拖动区之外。桌面检查覆盖顶部原生留白为零、三横线的拖动分区、关闭按钮排除及顶部/侧边缩放命中。
 
 窗口保持为 WinUI 顶层窗口，不嵌入 Explorer，保留 Acrylic 材质。通过工具窗口样式与 250 ms 的 UI 线程检查处理桌面层级：桌面激活时显示，其他应用激活时降到后面，不抢焦点；Win+D 显示桌面后仍可见。桌面模式保持玻璃材质的激活外观，避免点击桌面后变成不透明背景。
 

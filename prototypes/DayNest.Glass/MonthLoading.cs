@@ -79,17 +79,10 @@ sealed partial class CalendarApp
         try
         {
             if (closed) throw new OperationCanceledException();
-            string repo = Repo();
-            string python = Path.Combine(repo, ".venv", "Scripts", "python.exe");
-            if (!File.Exists(python)) python = "python";
-            var info = new ProcessStartInfo(python)
-            {
-                WorkingDirectory = repo, UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
-                StandardInputEncoding = new UTF8Encoding(false)
-            };
-            info.ArgumentList.Add("-B");
-            info.ArgumentList.Add(Path.Combine(repo, "prototypes", "DayNest.Glass", "calendar_bridge.py"));
+            var info = BridgeLaunch();
+            info.UseShellExecute = false; info.CreateNoWindow = true;
+            info.RedirectStandardInput = true; info.RedirectStandardOutput = true; info.RedirectStandardError = true;
+            info.StandardInputEncoding = new UTF8Encoding(false);
             info.ArgumentList.Add(command);
             if (sync) info.ArgumentList.Add("--refresh");
             if (!syncPins) info.ArgumentList.Add("--no-pin-sync");
@@ -119,6 +112,19 @@ sealed partial class CalendarApp
             finally { workers.Remove(process); }
         }
         finally { bridgeGate.Release(); }
+    }
+
+    static ProcessStartInfo BridgeLaunch()
+    {
+        string bundled = Path.Combine(AppContext.BaseDirectory, "backend", "DayNest.Bridge.exe");
+        if (File.Exists(bundled)) return new ProcessStartInfo(bundled) { WorkingDirectory = AppContext.BaseDirectory };
+        string repo = Repo();
+        string python = Path.Combine(repo, ".venv", "Scripts", "python.exe");
+        if (!File.Exists(python)) python = "python";
+        var info = new ProcessStartInfo(python) { WorkingDirectory = repo };
+        info.ArgumentList.Add("-B");
+        info.ArgumentList.Add(Path.Combine(repo, "prototypes", "DayNest.Glass", "calendar_bridge.py"));
+        return info;
     }
 
     async Task<Result> ReadMonth(string key, bool sync, CancellationToken cancellation, bool syncPins = true)
