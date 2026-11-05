@@ -1,6 +1,6 @@
-# DayNest WinUI 玻璃日历实验
+# DayNest WinUI 玻璃日历
 
-此分支用于验证 Windows 11 上的 WinUI 3 界面；原版 Python/Tk 程序仍为功能完整的版本。新界面用 C# 编写，CalDAV、DPAPI 账户读取及日程解析复用 Python；目前没有 C++ 代码。
+WinUI 玻璃日历现已合并到 main，作为 Windows 11 上的新界面。原版 Python/Tk 入口保留，方便兼容使用。新界面用 C# 编写，CalDAV、DPAPI 账户读取及日程解析复用 Python。
 
 ## 构建与启动
 
@@ -49,9 +49,9 @@ dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=
 
 `--render-stress` 打开窗口，执行 60 轮移动、缩放、主题/浓度调整和强制 GC；不保存外观，结果写入 `render-stress.txt` 后自动关闭窗口。未处理 WinUI 异常写入 `render-errors.log`。桥接检查模拟配置和缓存，不访问真实服务器。
 
-## 合并条件
+## 开发与发布状态
 
-当前保留 WinUI 分支，不合并 main。与原版对照的功能迁移已补齐，v2.0.0 从本分支发布自带运行环境的便携包，暂无安装向导。用户已完成实际功能与外观体验；后续继续进行更多服务器、设备、多屏/DPI、Explorer 重启与长期驻留验收。重复/全天日程编辑、跨日历移动及重复系列整体改期后的固定实例对应仍沿用原版限制，属于后续扩展能力。
+与原版对照的功能迁移已补齐，WinUI 开发分支已快进合并到 main。v2.0.0 标签保留发布时的原始提交，便携包自带运行环境，暂无安装向导。用户已完成实际功能与外观体验；后续在 main 继续进行更多服务器、设备、多屏/DPI、Explorer 重启与长期驻留验收。重复/全天日程编辑、跨日历移动及重复系列整体改期后的固定实例对应仍沿用原版限制，属于后续扩展能力。
 
 ## 两模块设置
 
