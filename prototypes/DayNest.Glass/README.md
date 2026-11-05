@@ -13,7 +13,7 @@ dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=
 
 重新编译前先关闭该输出目录下运行的窗口。
 
-发布便携包：在已安装 PyInstaller 的 Windows x64 Python 环境运行 `python tools/build_glass_release.py --version 2.0.0`。脚本发布自带运行时的 .NET 前端并冻结 Python 后端，包不依赖源码目录。产物在 `release/`，附带 GPL 和第三方许可证、构建版本信息及 SHA-256 校验。发布说明见 `docs/release-v2.0.0.md`。
+发布便携包：在已安装 PyInstaller 的 Windows x64 Python 环境运行 `python tools/build_glass_release.py --version 2.0.0 --crt-dir <VS 的 x64/Microsoft.VC*.CRT 目录> --crt-license-dir <VS 的 Licenses/语言目录>`。脚本发布自带运行时的 .NET 前端并冻结 Python 后端，附带 VC++ 运行库，包不依赖源码目录。产物在 `release/`，附带 GPL 和第三方许可证、构建版本信息及 SHA-256 校验。发布说明见 `docs/release-v2.0.0.md`。
 
 ## 当前功能
 

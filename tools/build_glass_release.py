@@ -16,7 +16,7 @@ def run(*args):
     subprocess.run(list(map(str, args)), cwd=ROOT, check=True)
 
 
-def build(version):
+def build(version, crt, crt_licenses, replace=False):
     if sys.platform != 'win32': raise RuntimeError('Build on Windows x64')
     # Unique staging avoids deleting existing builds or release artifacts.
     import uuid
@@ -25,7 +25,7 @@ def build(version):
     bundle = stage / 'DayNest'
     run('dotnet', 'publish', ROOT / 'prototypes/DayNest.Glass/DayNest.Glass.csproj', '-c', 'Release',
         '-r', 'win-x64', '--self-contained', 'true', '-p:Platform=x64', '-p:PublishSingleFile=false',
-        '-p:PublishTrimmed=false', '-p:Version=' + version, '-o', bundle, '--nologo')
+        '-p:PublishTrimmed=false', '-p:DebugType=None', '-p:DebugSymbols=false', '-p:Version=' + version, '-o', bundle, '--nologo')
     run(sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN',
         '--name', 'DayNest.Bridge', '--console', '--onedir', '--paths', ROOT,
         '--hidden-import', 'dateutil.zoneinfo', '--distpath', stage / 'python',
@@ -33,6 +33,11 @@ def build(version):
         ROOT / 'prototypes/DayNest.Glass/calendar_bridge.py')
     shutil.copytree(stage / 'python/DayNest.Bridge', bundle / 'backend')
     licenses = bundle / 'licenses'; licenses.mkdir()
+    if not all((crt / name).is_file() for name in ('msvcp140.dll', 'vcruntime140.dll')):
+        raise RuntimeError('Supply the x64 Microsoft.VC*.CRT redistributable directory from Visual Studio')
+    for path in crt.glob('*.dll'): shutil.copy2(path, bundle / path.name)
+    for name in ('Redist.txt', 'ThirdPartyNotices.txt'):
+        shutil.copy2(crt_licenses / name, licenses / ('VisualCpp-' + name))
     shutil.copy2(ROOT / 'LICENSE', bundle / 'LICENSE')
     shutil.copy2(Path(sys.base_prefix) / 'LICENSE.txt', licenses / 'Python-LICENSE.txt')
     for package in ('python-dateutil', 'six', 'pyinstaller'):
@@ -70,10 +75,13 @@ def build(version):
     (bundle / 'BUILD.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     release = ROOT / 'release'; release.mkdir(exist_ok=True)
     portable = release / f'DayNest-{version}-WinUI-Portable-win-x64.zip'
-    if portable.exists(): raise RuntimeError('Artifact exists; use a new version or review it first')
-    with zipfile.ZipFile(portable, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+    if portable.exists() and not replace: raise RuntimeError('Artifact exists; review it first or explicitly use --replace')
+    temporary = release / (portable.name + '.' + uuid.uuid4().hex + '.tmp')
+    assert temporary.resolve().parent == release.resolve() == portable.resolve().parent
+    with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in sorted(bundle.rglob('*')):
             if path.is_file(): archive.write(path, path.relative_to(stage))
+    temporary.replace(portable)
     (release / 'SHA256SUMS.txt').write_text(hashlib.sha256(portable.read_bytes()).hexdigest() + '  ' + portable.name + '\n', encoding='ascii')
     print(json.dumps(dict(bundle=str(bundle), archive=str(portable), sha256=hashlib.sha256(portable.read_bytes()).hexdigest())))
 
@@ -81,4 +89,8 @@ def build(version):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version', default='2.0.0')
-    build(parser.parse_args().version)
+    parser.add_argument('--crt-dir', type=Path, required=True, help='Visual Studio x64 Microsoft.VC*.CRT redistributable directory')
+    parser.add_argument('--crt-license-dir', type=Path, required=True, help='Visual Studio Licenses/<locale> directory')
+    parser.add_argument('--replace', action='store_true', help='Replace a reviewed, unpublished artifact')
+    args = parser.parse_args()
+    build(args.version, args.crt_dir.resolve(), args.crt_license_dir.resolve(), args.replace)
