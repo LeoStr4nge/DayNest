@@ -8,11 +8,11 @@ DayNest は Windows 11 x64 向けのデスクトップカレンダーウィジ�
 
 ## 画面イメージ
 
-以下はオフラインのサンプルデータを使った画面です。個人の予定は含まれていません。画像をクリックすると原寸で表示できます。スクリーンショットの表示言語は簡体字中国語です。
+以下は日本語表示で、オフラインのサンプルデータを使った画面です。個人の予定は含まれていません。画像をクリックすると原寸で表示できます。
 
 | 今日の予定とカウントダウン | 月表示とカレンダー |
 | :---: | :---: |
-| [![DayNest の今日の予定とカウントダウン](../../assets/screenshots/today-demo.png)](../../assets/screenshots/today-demo.png) | [![DayNest の月表示とカレンダー](../../assets/screenshots/month-demo.png)](../../assets/screenshots/month-demo.png) |
+| [![DayNest の今日の予定とカウントダウン](../../assets/screenshots/today-demo-ja.png)](../../assets/screenshots/today-demo-ja.png) | [![DayNest の月表示とカレンダー](../../assets/screenshots/month-demo-ja.png)](../../assets/screenshots/month-demo-ja.png) |
 
 ## ダウンロードと初期設定
 
