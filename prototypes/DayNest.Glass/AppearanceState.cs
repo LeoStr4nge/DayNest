@@ -9,17 +9,20 @@ sealed partial class CalendarApp
     string? accentColor;
     bool autoStart;
     bool removeExpiredPins = true;
+    string language = "zh-CN";
     string? startupNotice;
     ThemePalette palette = Themes.Get("midnight");
     bool DiagnosticMode => InstanceChecks.IsWindowCheck || stressMode || Environment.GetCommandLineArgs().Any(a =>
         a is "--calendar-flow-check" or "--desktop-check" or "--features-check" or "--offline-preview");
-    Appearance CurrentAppearance() => new(dark, glassDensity, glassEnabled, desktopMode, themeId, accentColor, autoStart, removeExpiredPins);
+    Appearance CurrentAppearance() => new(dark, glassDensity, glassEnabled, desktopMode, themeId, accentColor, autoStart, removeExpiredPins, language);
     void ReadAppearance(Appearance saved, bool initial = false)
     {
         dark = saved.Dark; glassDensity = saved.Density; glassEnabled = saved.Glass; desktopMode = saved.Desktop;
         themeId = Themes.Id(saved.Theme, saved.Dark); accentColor = Themes.ValidColor(saved.Accent) ? saved.Accent : null;
         autoStart = saved.AutoStart ?? false;
         removeExpiredPins = saved.RemoveExpiredPins;
+        language = saved.Language == "en-US" ? "en-US" : "zh-CN";
+        if (initial) I18n.Language = language;
         if (initial && !DiagnosticMode)
         {
             try
@@ -28,7 +31,7 @@ sealed partial class CalendarApp
                 if (saved.AutoStart == true) StartupRegistration.RefreshPath();
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-            { startupNotice = "自动启动设置暂时无法读取或更新，请在设置中重试。"; }
+            { startupNotice = I18n.T("自动启动设置暂时无法读取或更新，请在设置中重试。"); }
         }
     }
 

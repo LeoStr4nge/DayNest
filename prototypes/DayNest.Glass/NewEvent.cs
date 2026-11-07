@@ -18,23 +18,23 @@ sealed partial class CalendarApp
         var initial = selected.Date == now.Date
             ? new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0).AddHours(1)
             : selected.Date.AddHours(9);
-        var title = new TextBox { Header = "日程标题", PlaceholderText = "准备安排什么？" };
-        var calendarChoice = new ComboBox { Header = "保存到日历", DisplayMemberPath = "Name", HorizontalAlignment = HorizontalAlignment.Stretch };
-        var start = new EventDateTimeField("开始", initial);
-        var end = new EventDateTimeField("结束", initial.AddHours(1));
+        var title = new TextBox { Header = I18n.T("日程标题"), PlaceholderText = I18n.T("准备安排什么？") };
+        var calendarChoice = new ComboBox { Header = I18n.T("保存到日历"), DisplayMemberPath = "Name", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var start = new EventDateTimeField(I18n.T("开始"), initial);
+        var end = new EventDateTimeField(I18n.T("结束"), initial.AddHours(1));
         start.BeginEdit(); end.BeginEdit();
-        var notes = new TextBox { Header = "备注", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 90 };
-        var message = new TextBlock { Text = "正在读取可用日历…", TextWrapping = TextWrapping.Wrap };
-        var retry = new Button { Content = "重新读取日历", Visibility = Visibility.Collapsed };
+        var notes = new TextBox { Header = I18n.T("备注"), AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 90 };
+        var message = new TextBlock { Text = I18n.T("正在读取可用日历…"), TextWrapping = TextWrapping.Wrap };
+        var retry = new Button { Content = I18n.T("重新读取日历"), Visibility = Visibility.Collapsed };
         var body = new StackPanel { Spacing = 12, Width = Math.Max(220, Math.Min(420, page.XamlRoot.Size.Width - 96)) };
         body.Children.Add(title); body.Children.Add(calendarChoice); body.Children.Add(start.View); body.Children.Add(end.View);
         body.Children.Add(notes); body.Children.Add(message); body.Children.Add(retry);
         var form = new ScrollViewer { Content = body, MaxHeight = Math.Max(180, Math.Min(440, page.XamlRoot.Size.Height - 240)) };
         var dialog = new ContentDialog
         {
-            Title = "添加日程", XamlRoot = page.XamlRoot, RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light,
+            Title = I18n.T("添加日程"), XamlRoot = page.XamlRoot, RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light, Language = language,
             Content = form,
-            PrimaryButtonText = "添加到日历", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+            PrimaryButtonText = I18n.T("添加到日历"), CloseButtonText = I18n.T("取消"), DefaultButton = ContentDialogButton.Close,
             IsPrimaryButtonEnabled = false
         };
         dialog.Foreground = Brush(palette.Text); dialog.Background = Brush(palette.Card);
@@ -45,27 +45,27 @@ sealed partial class CalendarApp
             if (end.TryGetValue(out var finish) && finish > previousStart)
             {
                 try { end.SetValue(finish + (next - previousStart)); }
-                catch (ArgumentOutOfRangeException) { message.Text = "请选择有效的结束日期。"; }
+                catch (ArgumentOutOfRangeException) { message.Text = I18n.T("请选择有效的结束日期。"); }
             }
             previousStart = next;
         };
         using var readCancellation = new CancellationTokenSource();
         async Task ReadCalendars()
         {
-            retry.IsEnabled = false; dialog.IsPrimaryButtonEnabled = false; message.Text = "正在读取可用日历…";
+            retry.IsEnabled = false; dialog.IsPrimaryButtonEnabled = false; message.Text = I18n.T("正在读取可用日历…");
             try
             {
                 var result = await BridgeRequest("get-calendars", new { cachedOnly = !AutomaticNetwork }, readCancellation.Token);
                 if (readCancellation.IsCancellationRequested || closed) return;
-                if (result.TryGetProperty("error", out var error)) { message.Text = error.GetString(); return; }
+                if (result.TryGetProperty("error", out var error)) { message.Text = I18n.T(error.GetString() ?? ""); return; }
                 var choices = result.GetProperty("calendars").Deserialize<CalendarChoice[]>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-                calendarChoice.ItemsSource = choices;
+                calendarChoice.ItemsSource = choices.Select(choice => choice with { Name = I18n.FallbackName(choice.Name) }).ToArray();
                 calendarChoice.SelectedIndex = choices.Length == 0 ? -1 : 0;
                 dialog.IsPrimaryButtonEnabled = choices.Length > 0;
-                message.Text = choices.Length > 0 ? "添加单次日程；调整开始时间会保留原有时长。" : "未找到日历，请先检查账户设置并同步。";
+                message.Text = choices.Length > 0 ? I18n.T("添加单次日程；调整开始时间会保留原有时长。") : I18n.T("未找到日历，请先检查账户设置并同步。");
             }
             catch (OperationCanceledException) when (readCancellation.IsCancellationRequested) { }
-            catch { if (!closed) message.Text = "未能读取日历，请检查网络和日历账户后重试。"; }
+            catch { if (!closed) message.Text = I18n.T("未能读取日历，请检查网络和日历账户后重试。"); }
             finally
             {
                 if (!closed && !readCancellation.IsCancellationRequested)
@@ -77,11 +77,11 @@ sealed partial class CalendarApp
         dialog.PrimaryButtonClick += async (_, e) =>
         {
             e.Cancel = true;
-            if (calendarChoice.SelectedItem is not CalendarChoice target) { message.Text = "请选择保存到哪个日历。"; return; }
-            if (string.IsNullOrWhiteSpace(title.Text)) { message.Text = "日程标题不能为空。"; return; }
+            if (calendarChoice.SelectedItem is not CalendarChoice target) { message.Text = I18n.T("请选择保存到哪个日历。"); return; }
+            if (string.IsNullOrWhiteSpace(title.Text)) { message.Text = I18n.T("日程标题不能为空。"); return; }
             if (!start.TryGetValue(out var begin) || !end.TryGetValue(out var finish) || finish <= begin ||
                 TimeZoneInfo.Local.IsInvalidTime(begin) || TimeZoneInfo.Local.IsInvalidTime(finish))
-            { message.Text = "请选择有效的日期时间，结束时间必须晚于开始时间。"; return; }
+            { message.Text = I18n.T("请选择有效的日期时间，结束时间必须晚于开始时间。"); return; }
             var deferral = e.GetDeferral(); saving = true; dialog.IsPrimaryButtonEnabled = false; form.IsEnabled = false;
             try
             {

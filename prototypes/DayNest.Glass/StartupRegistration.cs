@@ -24,7 +24,7 @@ static class StartupRegistration
 {
     public static string Command(string? exe = null)
     {
-        string path = Path.GetFullPath(exe ?? Environment.ProcessPath ?? throw new IOException("无法确定程序路径。"));
+        string path = Path.GetFullPath(exe ?? Environment.ProcessPath ?? throw new IOException(I18n.T("无法确定程序路径。")));
         if (path.Contains('"') || path.Contains('\n') || path.Contains('\r') || !path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             throw new IOException("程序路径无效，无法设置自动启动。");
         return '"' + path + "\" --autostart";
@@ -47,7 +47,7 @@ static class StartupRegistration
             if (changed)
             {
                 try { entry.Write(before); }
-                catch (Exception error) { throw new IOException("外观保存失败，且自动启动状态未能恢复，请检查设置后重试。", error); }
+                catch (Exception error) { throw new IOException(I18n.T("外观保存失败，且自动启动状态未能恢复，请检查设置后重试。"), error); }
             }
             throw;
         }

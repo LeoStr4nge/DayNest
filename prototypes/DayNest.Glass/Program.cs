@@ -15,6 +15,11 @@ internal static class Program {
   }
   if(args.Contains("--instance-probe"))return InstanceChecks.RunProbe(args);
   if(args.Contains("--features-check")&&!InstanceChecks.IsWindowCheck)return 2;
+  var selectedLanguage = args.Contains("--i18n-check") ? "en-US" :
+   InstanceChecks.IsWindowCheck ? "zh-CN" : PreviewSettings.Load().Language;
+  I18n.Language = selectedLanguage == "en-US" ? "en-US" : "zh-CN";
+  System.Globalization.CultureInfo.DefaultThreadCurrentCulture = I18n.Culture;
+  System.Globalization.CultureInfo.CurrentCulture = I18n.Culture;
   SingleInstance? instance;
   try { instance=SingleInstance.RegisterOrRedirect(args.Contains("--normal-window"),InstanceChecks.WindowScope(args)); }
   catch(Exception error) when(error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or InvalidOperationException) {
@@ -48,7 +53,7 @@ public sealed partial class CalendarApp : Application {
  readonly StackPanel agenda=new(){Spacing=10};
  readonly TextBlock status=new(){FontSize=12,Opacity=.7,TextWrapping=TextWrapping.Wrap};
  readonly StackPanel calendar=new(){Spacing=12,Visibility=Visibility.Collapsed};
- readonly Button monthButton=new(){Content="本月日程"};
+ readonly Button monthButton=new(){Content=I18n.T("本月日程")};
  bool monthOverview;
  bool recentOverview;
  readonly StackPanel pinned=new(){Spacing=8};
@@ -66,40 +71,48 @@ public sealed partial class CalendarApp : Application {
  Button exitWidget=null!;
  Grid widgetBar=null!;
  readonly List<Border> dragLines=new();
- readonly Button refresh=new(){Content="刷新"};
+ readonly Button refresh=new(){Content=I18n.T("刷新")};
  readonly Dictionary<string,Result> months=new();
  readonly HashSet<Process> workers=new();
  DateTime selected=DateTime.Today;
  int generation; bool closed;
  protected override void OnLaunched(LaunchActivatedEventArgs args) {
-  ReadAppearance(InstanceChecks.IsWindowCheck?new Appearance():PreviewSettings.Load(),true);
+  ReadAppearance(InstanceChecks.IsWindowCheck
+   ? new Appearance(Language: Environment.GetCommandLineArgs().Contains("--i18n-check") ? "en-US" : "zh-CN")
+   : PreviewSettings.Load(),true);
+  todayButton.Content=I18n.T("今日");recentButton.Content=I18n.T("近期");refresh.Content=I18n.T("刷新");
   if(Environment.GetCommandLineArgs().Contains("--normal-window"))desktopMode=false;
   if(Environment.GetCommandLineArgs().Contains("--desktop-check"))desktopMode=true;
-  window=new Window{Title="DayNest · 分层玻璃日历",SystemBackdrop=glass};
+  window=new Window{Title=I18n.T("DayNest · 分层玻璃日历"),SystemBackdrop=glass};
   window.Activated+=(_,e)=>{windowActive=e.WindowActivationState!=WindowActivationState.Deactivated;glass.SetActive((desktopWidget?.Enabled??desktopMode)||windowActive);};
   window.AppWindow.Closing+=(_,e)=>{if(writeBusy){e.Cancel=true;closeAfterWrite=true;}};
-  page.RequestedTheme=ElementTheme.Dark;
+  page.RequestedTheme=ElementTheme.Dark;page.Language=language;
   widgetBar=new Grid{MinHeight=36};widgetBar.ColumnDefinitions.Add(new ColumnDefinition());widgetBar.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(40)});
   var dragRegion=new Grid{Background=Color(0,0,0,0),MinHeight=36};
   var grip=new StackPanel{Spacing=4,Width=24,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(40,0,0,0),Opacity=.65};
   for(int i=0;i<3;i++){var line=new Border{Height=2,CornerRadius=new CornerRadius(1)};dragLines.Add(line);grip.Children.Add(line);}
   dragRegion.Children.Add(grip);widgetBar.Children.Add(dragRegion);
-  AutomationProperties.SetName(dragRegion,"拖动窗口");ToolTipService.SetToolTip(dragRegion,"按住顶部横线区域拖动窗口");
+  AutomationProperties.SetName(dragRegion,I18n.T("拖动窗口"));ToolTipService.SetToolTip(dragRegion,I18n.T("按住顶部横线区域拖动窗口"));
   page.Children.Add(new TextBlock{Text="DayNest",FontSize=30,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
   exitWidget=new Button{Content="×",Width=28,Height=28,Padding=new Thickness(0),BorderThickness=new Thickness(0),Background=Color(0,0,0,0),VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Left};
-  AutomationProperties.SetName(exitWidget,"退出 DayNest");ToolTipService.SetToolTip(exitWidget,"退出 DayNest");exitWidget.Click+=(_,_)=>window.Close();
+  AutomationProperties.SetName(exitWidget,I18n.T("退出 DayNest"));ToolTipService.SetToolTip(exitWidget,I18n.T("退出 DayNest"));exitWidget.Click+=(_,_)=>window.Close();
   Grid.SetColumn(exitWidget,1);widgetBar.Children.Add(exitWidget);
-  var create=new Button{Content="+ 日程",HorizontalAlignment=HorizontalAlignment.Left};
-  create.Click+=async(_,_)=>await ShowNewEvent();page.Children.Add(create);
+  var create=new Button{Content=I18n.T("+ 日程"),HorizontalAlignment=HorizontalAlignment.Left};
+  create.Click+=async(_,_)=>await ShowNewEvent();
+  var settings=new Button{Content=I18n.T("设置"),HorizontalAlignment=HorizontalAlignment.Right};
+  var commandRow=new Grid();
+  commandRow.ColumnDefinitions.Add(new ColumnDefinition());
+  commandRow.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+  commandRow.Children.Add(create);Grid.SetColumn(settings,1);commandRow.Children.Add(settings);
+  page.Children.Add(commandRow);
   var actions=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};
-  var settings=new Button{Content="设置"};
-  ToolTipService.SetToolTip(recentButton,"查看今天及未来七天的日程");
+  ToolTipService.SetToolTip(recentButton,I18n.T("查看今天及未来七天的日程"));
   todayButton.Click+=async(_,_)=>{recentOverview=false;monthOverview=false;calendar.Visibility=Visibility.Collapsed;selected=DateTime.Today;DrawCalendar(true);await Load(false);};
   recentButton.Click+=async(_,_)=>{recentOverview=true;monthOverview=false;calendar.Visibility=Visibility.Collapsed;selected=DateTime.Today;DrawCalendar(true);await Load(false);};
   monthButton.Click+=async(_,_)=>{recentOverview=false;monthOverview=true;calendar.Visibility=Visibility.Visible;selected=DateTime.Today;DrawCalendar(true);await Load(false);};
   settings.Click+=async(_,_)=>await ShowSettings();
   refresh.Click+=async(_,_)=>await Load(true);
-  actions.Children.Add(CreateViewSelector());actions.Children.Add(refresh);actions.Children.Add(settings);page.Children.Add(actions);
+  actions.Children.Add(CreateViewSelector());actions.Children.Add(refresh);page.Children.Add(actions);
   UpdateViewSelector();SetRefreshBusy(false);
   page.Children.Add(pinned);page.Children.Add(calendar);page.Children.Add(status);page.Children.Add(agenda);
   surface=new ScrollViewer{Content=page,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
@@ -187,7 +200,7 @@ public sealed partial class CalendarApp : Application {
   if(calendar.Visibility!=Visibility.Visible)return;
   calendar.Children.Clear();
   var heading=new Grid();heading.ColumnDefinitions.Add(new ColumnDefinition());heading.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
-  heading.Children.Add(new TextBlock{Text=selected.ToString("yyyy 年 M 月"),FontSize=20,VerticalAlignment=VerticalAlignment.Center});
+  heading.Children.Add(new TextBlock{Text=selected.ToString(I18n.T("yyyy 年 M 月")),FontSize=20,VerticalAlignment=VerticalAlignment.Center});
   var navigation=new StackPanel{Orientation=Orientation.Horizontal,Spacing=6};
   foreach(int delta in new[]{-1,1}){
    var arrow=new Button{Content=delta<0?"‹":"›",Width=36,Padding=new Thickness(0)};
@@ -198,7 +211,7 @@ public sealed partial class CalendarApp : Application {
   var grid=new Grid{RowSpacing=4,ColumnSpacing=3};
   for(int c=0;c<7;c++)grid.ColumnDefinitions.Add(new ColumnDefinition());
   for(int r=0;r<7;r++)grid.RowDefinitions.Add(new RowDefinition{Height=new GridLength(40)});
-  string[] days={"一","二","三","四","五","六","日"};
+  string[] days={I18n.T("一"),I18n.T("二"),I18n.T("三"),I18n.T("四"),I18n.T("五"),I18n.T("六"),I18n.T("日")};
   for(int c=0;c<7;c++){var label=new TextBlock{Text=days[c],Opacity=.7,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(label,c);grid.Children.Add(label);}
   var first=new DateTime(selected.Year,selected.Month,1);var start=first.AddDays(-((int)first.DayOfWeek+6)%7);
   for(int i=0;i<42;i++){
@@ -211,7 +224,7 @@ public sealed partial class CalendarApp : Application {
     Background=chosen?Brush(palette.Accent):Color(0,0,0,0),
     Foreground=Brush(chosen?palette.OnAccent:palette.Text),
     BorderBrush=date==DateTime.Today?Brush(palette.AccentInk):Color(0,0,0,0),BorderThickness=new Thickness(date==DateTime.Today?1:0),Opacity=date.Month==selected.Month?1:.4};
-   var dayName=$"{date:yyyy-MM-dd} · {dayEvents} 项日程";
+   var dayName=I18n.T($"{date:yyyy-MM-dd} · {dayEvents} 项日程");
    ToolTipService.SetToolTip(button,dayName);AutomationProperties.SetName(button,dayName);
    button.Click+=async(_,_)=>{recentOverview=false;monthOverview=false;selected=date;DrawCalendar(true);await Load(false);};
    Grid.SetColumn(button,i%7);Grid.SetRow(button,i/7+1);grid.Children.Add(button);
@@ -225,9 +238,9 @@ public sealed partial class CalendarApp : Application {
   DrawCalendar();RenderPins(data.Pins??[]);
   agenda.Children.Clear();status.Text=string.Join(" · ",new[]{data.Status,data.Warning,startupNotice}.Where(s=>!string.IsNullOrWhiteSpace(s)));
   if(recentOverview){RenderRecent();return;}
-  agenda.Children.Add(new TextBlock{Text=selected.ToString(monthOverview?"yyyy 年 M 月日程":"M 月 d 日"),FontSize=22});
+  agenda.Children.Add(new TextBlock{Text=selected.ToString(monthOverview?I18n.T("yyyy 年 M 月日程"):I18n.T("M 月 d 日")),FontSize=22});
   IReadOnlyList<Entry> entries=monthOverview?(data.Events??[]).Where(e=>OccursInMonth(e,selected)).ToArray():MonthIndex(selected.ToString("yyyy-MM")).On(selected);
   foreach(var e in entries)agenda.Children.Add(EventCard(e,monthOverview));
-  if(entries.Count==0)agenda.Children.Add(new TextBlock{Text=data.HasCache?(monthOverview?"本月暂无日程":"当天暂无日程"):"暂无完整缓存，联网同步后显示日程",Opacity=.65});
+  if(entries.Count==0)agenda.Children.Add(new TextBlock{Text=data.HasCache?(monthOverview?I18n.T("本月暂无日程"):I18n.T("当天暂无日程")):I18n.T("暂无完整缓存，联网同步后显示日程"),Opacity=.65});
  }
 }

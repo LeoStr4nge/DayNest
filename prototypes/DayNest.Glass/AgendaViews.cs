@@ -45,9 +45,9 @@ sealed partial class CalendarApp
     Button EventCard(Entry entry, bool includeDate)
     {
         var content = new StackPanel { Spacing = 6 };
-        string when = includeDate ? entry.Start.LocalDateTime.ToString("M月d日 ") : "";
-        content.Children.Add(new TextBlock { Text = $"{when}{(entry.AllDay ? "全天" : entry.Start.LocalDateTime.ToString("HH:mm"))}  {entry.Title}", FontSize = 17, TextWrapping = TextWrapping.Wrap });
-        content.Children.Add(new TextBlock { Text = entry.Calendar, FontSize = 12, Opacity = .65 });
+        string when = includeDate ? entry.Start.LocalDateTime.ToString(I18n.T("M月d日 ")) : "";
+        content.Children.Add(new TextBlock { Text = $"{when}{(entry.AllDay ? I18n.T("全天") : entry.Start.LocalDateTime.ToString("HH:mm"))}  {I18n.FallbackName(entry.Title)}", FontSize = 17, TextWrapping = TextWrapping.Wrap });
+        content.Children.Add(new TextBlock { Text = I18n.FallbackName(entry.Calendar), FontSize = 12, Opacity = .65 });
         if (!string.IsNullOrWhiteSpace(entry.Notes)) content.Children.Add(new TextBlock
         {
             Text = string.Join(" ", entry.Notes.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)),
@@ -58,25 +58,25 @@ sealed partial class CalendarApp
             Content = content, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(14), CornerRadius = new CornerRadius(12), Background = Tint(90, palette.Card)
         };
-        AutomationProperties.SetName(card, $"查看日程：{entry.Title}");
+        AutomationProperties.SetName(card, I18n.T($"查看日程：{entry.Title}"));
         card.Click += async (_, _) => await ShowEventDetails(entry);
         return card;
     }
 
     void RenderRecent()
     {
-        agenda.Children.Add(new TextBlock { Text = "近期日程 · 今天及未来七天", FontSize = 22 });
+        agenda.Children.Add(new TextBlock { Text = I18n.T("近期日程 · 今天及未来七天"), FontSize = 22 });
         var index = RecentIndex();
         for (int i = 0; i < 8; i++)
         {
             var day = selected.Date.AddDays(i);
-            agenda.Children.Add(new TextBlock { Text = day.ToString("M 月 d 日") + (i == 0 ? " · 今天" : ""), FontSize = 17, Foreground = Brush(palette.AccentInk), Margin = new Thickness(0, 10, 0, 0) });
+            agenda.Children.Add(new TextBlock { Text = day.ToString(I18n.T("M 月 d 日")) + (i == 0 ? I18n.T(" · 今天") : ""), FontSize = 17, Foreground = Brush(palette.AccentInk), Margin = new Thickness(0, 10, 0, 0) });
             var daily = index.On(day);
             foreach (var entry in daily) agenda.Children.Add(EventCard(entry, false));
             if (daily.Count == 0)
             {
                 bool complete = months.TryGetValue(day.ToString("yyyy-MM"), out var data) && data.HasCache;
-                agenda.Children.Add(new TextBlock { Text = complete ? "无日程" : "该月份尚未完成同步", Opacity = .65 });
+                agenda.Children.Add(new TextBlock { Text = complete ? I18n.T("无日程") : I18n.T("该月份尚未完成同步"), Opacity = .65 });
             }
         }
     }

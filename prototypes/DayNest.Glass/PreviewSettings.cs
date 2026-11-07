@@ -3,7 +3,8 @@ using System.Text.Json;
 namespace DayNest.Glass;
 
 sealed record Appearance(bool Dark = true, double Density = .42, bool Glass = true, bool Desktop = true,
-    string? Theme = null, string? Accent = null, bool? AutoStart = null, bool RemoveExpiredPins = true);
+    string? Theme = null, string? Accent = null, bool? AutoStart = null, bool RemoveExpiredPins = true,
+    string Language = "zh-CN");
 
 static class PreviewSettings
 {

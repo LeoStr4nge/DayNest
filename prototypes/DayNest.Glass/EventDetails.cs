@@ -12,16 +12,16 @@ sealed partial class CalendarApp
     {
         writeBusy = true;
         CancelMonthRequests(); writeWarning = null;
-        message.Text = command == "delete-event" ? "正在删除日程，请稍候…" : "正在保存日程，请稍候…";
+        message.Text = command == "delete-event" ? I18n.T("正在删除日程，请稍候…") : I18n.T("正在保存日程，请稍候…");
         try
         {
             var response = await AccountRequest(command, payload);
-            if (response.TryGetProperty("error", out var error)) { message.Text = error.GetString(); return false; }
+            if (response.TryGetProperty("error", out var error)) { message.Text = I18n.T(error.GetString() ?? ""); return false; }
             if (!response.TryGetProperty("ok", out var ok) || !ok.GetBoolean()) throw new InvalidOperationException();
-            if (response.TryGetProperty("warning", out var warning)) writeWarning = warning.GetString();
+            if (response.TryGetProperty("warning", out var warning)) writeWarning = I18n.T(warning.GetString() ?? "");
             return true;
         }
-        catch { message.Text = "未能确认服务器操作结果，请刷新日历确认后再试。"; return false; }
+        catch { message.Text = I18n.T("未能确认服务器操作结果，请刷新日历确认后再试。"); return false; }
         finally { writeBusy = false; if (!closed) refresh.IsEnabled = true; }
     }
 
@@ -36,19 +36,19 @@ sealed partial class CalendarApp
         detailsOpen = true;
         CancelMonthRequests();
         bool editing = false, changed = false, saving = false;
-        var title = new TextBox { Header = "日程标题", Text = entry.Title, IsReadOnly = true };
-        var start = new EventDateTimeField("开始", entry.Start.LocalDateTime);
-        var end = new EventDateTimeField("结束", entry.End.LocalDateTime);
-        var notes = new TextBox { Header = "备注", Text = entry.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 110, IsReadOnly = true };
+        var title = new TextBox { Header = I18n.T("日程标题"), Text = entry.Title, IsReadOnly = true };
+        var start = new EventDateTimeField(I18n.T("开始"), entry.Start.LocalDateTime);
+        var end = new EventDateTimeField(I18n.T("结束"), entry.End.LocalDateTime);
+        var notes = new TextBox { Header = I18n.T("备注"), Text = entry.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 110, IsReadOnly = true };
         var message = new TextBlock { TextWrapping = TextWrapping.Wrap };
         bool alreadyPinned = entry.Key != null && months.Values.Any(m => (m.Pins ?? []).Any(p => p.Key == entry.Key));
         var pinButton = new Button
         {
-            Content = alreadyPinned ? "已固定到桌面" : "固定到桌面",
+            Content = alreadyPinned ? I18n.T("已固定到桌面") : I18n.T("固定到桌面"),
             IsEnabled = !alreadyPinned && !string.IsNullOrEmpty(entry.PinHandle)
         };
         var body = new StackPanel { Spacing = 12, Width = Math.Max(220, Math.Min(420, page.XamlRoot.Size.Width - 96)) };
-        var timeHint = new TextBlock { Text = "点击日期选择月历，时间使用 24 小时制。调整开始时间会同步顺延结束时间，保留当前时长。", TextWrapping = TextWrapping.Wrap, Opacity = .7, Visibility = Visibility.Collapsed };
+        var timeHint = new TextBlock { Text = I18n.T("点击日期选择月历，时间使用 24 小时制。调整开始时间会同步顺延结束时间，保留当前时长。"), TextWrapping = TextWrapping.Wrap, Opacity = .7, Visibility = Visibility.Collapsed };
         DateTime previousStart = entry.Start.LocalDateTime;
         start.Changed += () =>
         {
@@ -56,19 +56,19 @@ sealed partial class CalendarApp
             if (end.TryGetValue(out var finish) && finish > previousStart)
             {
                 try { end.SetValue(finish + (next - previousStart)); }
-                catch (ArgumentOutOfRangeException) { message.Text = "请选择有效的结束日期。"; }
+                catch (ArgumentOutOfRangeException) { message.Text = I18n.T("请选择有效的结束日期。"); }
             }
             previousStart = next;
         };
-        body.Children.Add(new TextBlock { Text = entry.Calendar + (entry.AllDay ? " · 全天" : ""), Opacity = .7 });
+        body.Children.Add(new TextBlock { Text = I18n.FallbackName(entry.Calendar) + (entry.AllDay ? I18n.T(" · 全天") : ""), Opacity = .7 });
         body.Children.Add(pinButton); body.Children.Add(title); body.Children.Add(start.View); body.Children.Add(end.View); body.Children.Add(timeHint); body.Children.Add(notes); body.Children.Add(message);
         if (!entry.Editable || !entry.Deletable)
-            body.Children.Add(new TextBlock { Text = "重复日程请在原日历中处理；全天日程暂不支持编辑。若缺少版本信息，请先刷新日历。", TextWrapping = TextWrapping.Wrap, Opacity = .7 });
+            body.Children.Add(new TextBlock { Text = I18n.T("重复日程请在原日历中处理；全天日程暂不支持编辑。若缺少版本信息，请先刷新日历。"), TextWrapping = TextWrapping.Wrap, Opacity = .7 });
         var details = new ContentDialog
         {
-            Title = "日程详情", XamlRoot = page.XamlRoot, RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light,
+            Title = I18n.T("日程详情"), XamlRoot = page.XamlRoot, RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light, Language = language,
             Content = new ScrollViewer { Content = body, MaxHeight = Math.Max(180, Math.Min(440, page.XamlRoot.Size.Height - 240)) },
-            PrimaryButtonText = "修改日程", SecondaryButtonText = "删除日程", CloseButtonText = "关闭",
+            PrimaryButtonText = I18n.T("修改日程"), SecondaryButtonText = I18n.T("删除日程"), CloseButtonText = I18n.T("关闭"),
             IsPrimaryButtonEnabled = entry.Editable, IsSecondaryButtonEnabled = entry.Deletable,
             DefaultButton = ContentDialogButton.Close
         };
@@ -82,7 +82,7 @@ sealed partial class CalendarApp
             try
             {
                 if (await ChangePin("add-pin", entry.PinHandle, message))
-                { alreadyPinned = true; pinButton.Content = "已固定到桌面"; }
+                { alreadyPinned = true; pinButton.Content = I18n.T("已固定到桌面"); }
             }
             finally
             {
@@ -99,14 +99,14 @@ sealed partial class CalendarApp
                 editing = true; title.IsReadOnly = notes.IsReadOnly = false;
                 start.BeginEdit(); end.BeginEdit(); timeHint.Visibility = Visibility.Visible;
                 pinButton.IsEnabled = false;
-                details.PrimaryButtonText = "保存修改"; details.CloseButtonText = "取消";
+                details.PrimaryButtonText = I18n.T("保存修改"); details.CloseButtonText = I18n.T("取消");
                 title.Focus(FocusState.Programmatic);
                 return;
             }
-            if (string.IsNullOrWhiteSpace(title.Text)) { message.Text = "日程标题不能为空。"; return; }
+            if (string.IsNullOrWhiteSpace(title.Text)) { message.Text = I18n.T("日程标题不能为空。"); return; }
             if (!start.TryGetValue(out var begin) || !end.TryGetValue(out var finish)
                 || finish <= begin || TimeZoneInfo.Local.IsInvalidTime(begin) || TimeZoneInfo.Local.IsInvalidTime(finish))
-            { message.Text = "请选择有效的日期时间，结束时间必须晚于开始时间。"; return; }
+            { message.Text = I18n.T("请选择有效的日期时间，结束时间必须晚于开始时间。"); return; }
             var deferral = e.GetDeferral();
             saving = true; details.IsPrimaryButtonEnabled = details.IsSecondaryButtonEnabled = false; body.IsHitTestVisible = false;
             try
@@ -131,11 +131,11 @@ sealed partial class CalendarApp
             {
                 var result = await details.ShowAsync();
                 if (result != ContentDialogResult.Secondary || closed) break;
-                var warning = new TextBlock { Text = $"确定删除“{entry.Title}”？\n\n此操作会从日历服务中删除日程，其他设备也会同步删除。", TextWrapping = TextWrapping.Wrap };
+                var warning = new TextBlock { Text = I18n.T($"确定删除“{entry.Title}”？\n\n此操作会从日历服务中删除日程，其他设备也会同步删除。"), TextWrapping = TextWrapping.Wrap };
                 var confirm = new ContentDialog
                 {
-                    Title = "确认删除日程", XamlRoot = page.XamlRoot, RequestedTheme = details.RequestedTheme,
-                    Content = warning, PrimaryButtonText = "删除日程", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close
+                    Title = I18n.T("确认删除日程"), XamlRoot = page.XamlRoot, RequestedTheme = details.RequestedTheme, Language = language,
+                    Content = warning, PrimaryButtonText = I18n.T("删除日程"), CloseButtonText = I18n.T("取消"), DefaultButton = ContentDialogButton.Close
                 };
                 confirm.Foreground = Brush(palette.Text); confirm.Background = Brush(palette.Card);
                 bool deleting = false;

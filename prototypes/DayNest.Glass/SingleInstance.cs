@@ -25,7 +25,7 @@ sealed class SingleInstance : IDisposable
     {
         using var identity = WindowsIdentity.GetCurrent();
         using var process = Process.GetCurrentProcess();
-        string user = identity.User?.Value ?? throw new InvalidOperationException("无法读取 Windows 用户身份。");
+        string user = identity.User?.Value ?? throw new InvalidOperationException(I18n.T("无法读取 Windows 用户身份。"));
         string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(user)))[..16];
         string prefix = testScope == null ? "DayNest.Glass" : "DayNest.Glass.Check." + Guid.Parse(testScope).ToString("N");
         return prefix + "." + hash + "." + process.SessionId;
@@ -59,7 +59,7 @@ sealed class SingleInstance : IDisposable
             if (TryRegister(out instance, testScope)) return instance;
             Thread.Sleep(100);
         }
-        throw new IOException("DayNest 已在运行，但暂时无法显示窗口。请稍后重试。");
+        throw new IOException(I18n.T("DayNest 已在运行，但暂时无法显示窗口。请稍后重试。"));
     }
 
     public void SetActivationHandler(Func<bool, bool> handler)

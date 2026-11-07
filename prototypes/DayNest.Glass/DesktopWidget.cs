@@ -75,7 +75,7 @@ sealed class DesktopWidget : IDisposable
         try
         {
             if (window.AppWindow.Presenter is not OverlappedPresenter presenter)
-                throw new InvalidOperationException("窗口类型不支持桌面模式");
+                throw new InvalidOperationException(I18n.T("窗口类型不支持桌面模式"));
             if (enabled)
             {
                 Enabled = true;
@@ -93,7 +93,7 @@ sealed class DesktopWidget : IDisposable
         catch (Exception e) when (e is Win32Exception or InvalidOperationException or COMException)
         {
             RestoreNormal();
-            reportError("桌面模式未能启用，已恢复普通窗口。");
+            reportError(I18n.T("桌面模式未能启用，已恢复普通窗口。"));
         }
     }
 
@@ -151,7 +151,7 @@ sealed class DesktopWidget : IDisposable
         catch (Exception e) when (e is Win32Exception or COMException)
         {
             RestoreNormal();
-            reportError("桌面层级处理失败，已恢复普通窗口。");
+            reportError(I18n.T("桌面层级处理失败，已恢复普通窗口。"));
         }
     }
 

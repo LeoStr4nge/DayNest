@@ -17,6 +17,33 @@ sealed partial class CalendarApp
         {
             await Task.Delay(350); // Initial XAML layout must exist before opening dialogs.
             await (startupLoad ?? Task.CompletedTask);
+            var commandRow = page.Children.OfType<Grid>().FirstOrDefault(row =>
+                row.Children.OfType<Button>().Any(button => Equals(button.Content, I18n.T("+ 日程"))) &&
+                row.Children.OfType<Button>().Any(button => Equals(button.Content, I18n.T("设置"))));
+            Check(commandRow != null && page.Children.OfType<StackPanel>().Any(row =>
+                row.Orientation == Orientation.Horizontal && row.Children.Count == 2 &&
+                row.Children.OfType<Button>().Any(button => ReferenceEquals(button, refresh))),
+                "Settings must share the new-event row, leaving only view selection and refresh below");
+            var settingsButton = commandRow!.Children.OfType<Button>().Single(button => Equals(button.Content, I18n.T("设置")));
+            double settingsLeft = settingsButton.TransformToVisual(page).TransformPoint(new Windows.Foundation.Point(0, 0)).X;
+            SetRefreshBusy(true); await Task.Delay(40);
+            SetRefreshBusy(false); await Task.Delay(40);
+            Check(Math.Abs(settingsButton.TransformToVisual(page).TransformPoint(new Windows.Foundation.Point(0, 0)).X - settingsLeft) < .1 &&
+                settingsButton.TransformToVisual(page).TransformPoint(new Windows.Foundation.Point(settingsButton.ActualWidth, 0)).X <= page.ActualWidth + 1,
+                "Settings must fit inside the window after refresh");
+            Check(viewThumbWidths.Length == 3 && viewSlotWidths.Length == 3 &&
+                Enumerable.Range(0, 3).All(i => viewSlotWidths[i] >= viewThumbWidths[i] + 8) &&
+                Math.Abs(viewTrack.Width - viewSlotWidths.Sum()) < .1,
+                "View selector highlight must fit every localized label");
+            if (I18n.Language == "en-US")
+                Check(viewThumbWidths[1] > 46, "Upcoming must widen the selection highlight");
+            recentOverview = true; UpdateViewSelector(true);
+            await Task.Delay(280);
+            Check(Math.Abs(viewThumb.Width - viewThumbWidths[1]) < .1 &&
+                Math.Abs(viewThumbOffset.X - ViewThumbTarget(1)) < .1,
+                "Animated selection must finish at the centered pill");
+            recentOverview = false; UpdateViewSelector(true);
+            await Task.Delay(280);
             for (int i = 0; i < 100 && prefetchCancellation != null; i++) await Task.Delay(10);
             foreach (var preset in Themes.All)
             {
@@ -49,7 +76,9 @@ sealed partial class CalendarApp
             recentOverview = true; monthOverview = false; selected = new DateTime(2026, 12, 29);
             calendar.Visibility = Visibility.Collapsed; await Load(true);
             Check(RecentMonths(selected).All(k => months.TryGetValue(k, out var data) && data.HasCache), "Recent view must load both months across a year boundary");
-            Check(agenda.Children.OfType<TextBlock>().Count(t => t.Text.Contains(" 月 ") && t.Text.Contains(" 日")) == 8, "Recent view must show exactly eight day groups");
+            Check(Enumerable.Range(0, 8).All(i => agenda.Children.OfType<TextBlock>().Any(t =>
+                t.Text.StartsWith(selected.AddDays(i).ToString(I18n.T("M 月 d 日"), I18n.Culture)))),
+                "Recent view must show exactly eight day groups");
             report = "PASS: six live themes/native accents, custom color/startup preview cancellation, pin notes/details, eight-day cross-year recent view and two-month loading";
         }
         catch (Exception error) { report = "FAIL: " + error; }

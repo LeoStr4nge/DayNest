@@ -135,6 +135,9 @@ sealed partial class CalendarApp
         var json = await BridgeRequest(key, cancellation: cancellation, sync: sync, syncPins: syncPins);
         var data = json.Deserialize<Result>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new InvalidOperationException();
+        data = data with { Status = data.Status is null ? null : I18n.T(data.Status),
+            Error = data.Error is null ? null : I18n.T(data.Error),
+            Warning = data.Warning is null ? null : I18n.T(data.Warning) };
         if (data.Error != null) throw new CalendarReadException(data.Error);
         return data;
     }
@@ -150,7 +153,7 @@ sealed partial class CalendarApp
         SetRefreshBusy(true);
         refresh.IsEnabled = false;
         if (months.TryGetValue(key, out var data)) Render(data);
-        else { agenda.Children.Clear(); status.Text = "正在读取本地缓存…"; }
+        else { agenda.Children.Clear(); status.Text = I18n.T("正在读取本地缓存…"); }
         try
         {
             if (data == null)
@@ -161,7 +164,7 @@ sealed partial class CalendarApp
             }
             if (AutomaticNetwork && data.Configured && (sync || !MonthPolicy.Fresh(data, DateTimeOffset.UtcNow)))
             {
-                status.Text = data.HasCache ? "显示缓存 · 正在同步…" : "正在同步本月日程…";
+                status.Text = data.HasCache ? I18n.T("显示缓存 · 正在同步…") : I18n.T("正在同步本月日程…");
                 var latest = await ReadMonth(key, true, request.Token);
                 if (closed || token != generation) return;
                 data = latest; StoreMonth(key, latest); Render(latest);
@@ -191,8 +194,8 @@ sealed partial class CalendarApp
         catch (Exception error)
         {
             if (!closed && token == generation)
-                status.Text = (data?.HasCache == true ? "同步失败，保留缓存 · " : "未能同步 · ") +
-                    (error is CalendarReadException ? error.Message : "请检查网络及日历账户后重试。");
+                status.Text = (data?.HasCache == true ? I18n.T("同步失败，保留缓存 · ") : I18n.T("未能同步 · ")) +
+                    (error is CalendarReadException ? error.Message : I18n.T("请检查网络及日历账户后重试。"));
         }
         finally
         {
@@ -200,7 +203,7 @@ sealed partial class CalendarApp
             {
                 try { await RemoveExpiredPins(request.Token); }
                 catch (OperationCanceledException) when (request.IsCancellationRequested) { }
-                catch { status.Text += " · 过期倒计时暂时无法移除，请稍后刷新。"; }
+                catch { status.Text += I18n.T(" · 过期倒计时暂时无法移除，请稍后刷新。"); }
             }
             if (ReferenceEquals(requestCancellation, request)) requestCancellation = null;
             if (!closed && token == generation)

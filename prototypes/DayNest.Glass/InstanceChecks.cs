@@ -12,7 +12,7 @@ static class InstanceChecks
         int i = Array.IndexOf(args, "--instance-window-check");
         if (i < 0) return null;
         if (i + 2 >= args.Length || !Guid.TryParse(args[i + 1], out var scope))
-            throw new InvalidOperationException("窗口检查参数无效。");
+            throw new InvalidOperationException(I18n.T("窗口检查参数无效。"));
         return scope.ToString("N");
     }
 
@@ -71,7 +71,7 @@ static class InstanceChecks
     }
 
     public static void StartupFailure(Exception error) => MessageBoxW(0,
-        error is IOException ? error.Message : "无法检查 DayNest 是否已运行，已停止启动。请稍后重试。", "DayNest", 0x10);
+        error is IOException ? error.Message : I18n.T("无法检查 DayNest 是否已运行，已停止启动。请稍后重试。"), "DayNest", 0x10);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int MessageBoxW(nint owner, string text, string caption, uint type);
 }

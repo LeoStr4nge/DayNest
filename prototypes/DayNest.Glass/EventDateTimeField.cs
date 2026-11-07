@@ -18,14 +18,14 @@ sealed class EventDateTimeField
 
     public EventDateTimeField(string label, DateTime value)
     {
-        date = new CalendarDatePicker { Date = new DateTimeOffset(value), MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+        date = new CalendarDatePicker { Date = new DateTimeOffset(value), MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch, Language = I18n.Language };
         selectedTime = value.TimeOfDay;
         time = new Button { Content = value.ToString("HH:mm"), Width = 124, HorizontalAlignment = HorizontalAlignment.Stretch };
         timePicker = new TimePickerFlyout { Time = selectedTime, ClockIdentifier = "24HourClock", MinuteIncrement = 1 };
-        AutomationProperties.SetName(date, label + "日期");
-        AutomationProperties.SetName(time, label + "时间");
+        AutomationProperties.SetName(date, label + I18n.T("日期"));
+        AutomationProperties.SetName(time, label + I18n.T("时间"));
         View.Children.Add(new TextBlock { Text = label });
-        summary.Text = value.ToString("yyyy 年 M 月 d 日 HH:mm");
+        summary.Text = value.ToString(I18n.T("yyyy 年 M 月 d 日 HH:mm"));
         View.Children.Add(summary);
         editor.ColumnDefinitions.Add(new ColumnDefinition());
         editor.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

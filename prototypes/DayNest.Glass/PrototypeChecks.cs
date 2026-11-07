@@ -19,6 +19,20 @@ static class PrototypeChecks
             File.WriteAllText(path, "{\"Dark\":false,\"Density\":0.38,\"Glass\":true}");
             Check(PreviewSettings.Load(path) == new Appearance(false, .38, true, true), "Existing appearance settings must default to desktop mode");
             Check(PreviewSettings.Load(path).RemoveExpiredPins, "Existing settings must default to removing expired countdowns");
+            Check(PreviewSettings.Load(path).Language == "zh-CN", "Existing settings must default to Simplified Chinese");
+            PreviewSettings.Save(new Appearance(Language: "en-US"), path);
+            Check(PreviewSettings.Load(path).Language == "en-US", "English language choice must survive restart");
+            I18n.Language = "en-US";
+            Check(I18n.T("设置") == "Settings" && I18n.T("还有 3 天") == "3 days left" &&
+                I18n.T("认证失败：请检查日历账户和密码，部分服务需要使用应用专用密码").StartsWith("Authentication failed"),
+                "English interface and bridge messages must translate");
+            Check(new DateTime(2026, 11, 7).ToString(I18n.T("yyyy 年 M 月日程"), I18n.Culture) == "November 2026 events",
+                "English month heading must format as a readable date");
+            Check(I18n.T("确定删除“Example”？\n\n此操作会从日历服务中删除日程，其他设备也会同步删除。").Contains("other devices"),
+                "English delete confirmation must translate its dynamic title");
+            Check(!I18n.T("部分固定项暂未能更新，已保留上次数据。 日程已同步，但缓存保存失败；重启后需要重新同步。").Any(c => c is >= '\u4e00' and <= '\u9fff'),
+                "Combined bridge warnings must translate completely");
+            I18n.Language = "zh-CN";
             PreviewSettings.Save(new Appearance(false, .67, false, false), path);
             Check(PreviewSettings.Load(path) == new Appearance(false, .67, false, false), "Theme, glass, desktop mode and density must survive restart");
             PreviewSettings.Save(new Appearance(RemoveExpiredPins: false), path);
