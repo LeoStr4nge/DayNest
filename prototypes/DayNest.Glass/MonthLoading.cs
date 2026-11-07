@@ -26,7 +26,7 @@ sealed partial class CalendarApp
     Task? startupLoad;
     Func<string, bool, CancellationToken, Task<Result>>? monthReaderOverride;
     bool AutomaticNetwork => !stressMode && !Environment.GetCommandLineArgs().Any(a =>
-        a is "--desktop-check" or "--offline-preview");
+        a is "--desktop-check" or "--offline-preview" or "--demo");
 
     void StartCalendarLoading()
     {
@@ -72,6 +72,7 @@ sealed partial class CalendarApp
     async Task<JsonElement> BridgeRequest(string command, object? payload = null,
         CancellationToken cancellation = default, bool sync = false, bool syncPins = true)
     {
+        if (demoMode) return DemoBridgeResponse(command);
         if (InstanceChecks.IsWindowCheck)
         {
             if (command != "get-account") throw new InvalidOperationException("Instance checks cannot access the calendar bridge.");

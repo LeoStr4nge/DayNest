@@ -179,7 +179,7 @@ sealed partial class CalendarApp
                     try
                     {
                         language = languageChoice.SelectedIndex switch { 1 => "en-US", 2 => "ja-JP", _ => "zh-CN" };
-                        if (!InstanceChecks.IsWindowCheck) StartupRegistration.Save(CurrentAppearance());
+                        if (!InstanceChecks.IsWindowCheck && !demoMode) StartupRegistration.Save(CurrentAppearance());
                         startupNotice = null;
                         appearanceSaved = true; e.Cancel = false;
                     }

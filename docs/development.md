@@ -31,6 +31,8 @@ dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=
 
 构建前关闭同一输出目录中的运行实例。恢复普通窗口可给 EXE 添加 `--normal-window`。开发版从仓库寻找 Python 和桥接脚本；便携发布版调用包内 `backend/DayNest.Bridge.exe`。
 
+为截图或展示使用 `DayNest.Glass.exe --demo`：单独打开桌面小组件，使用内存中的虚构日程与倒计时，不读取真实账户、缓存或外观配置，不访问日历服务器，也不保存演示设置或窗口位置。可附加 `--i18n-check` 或 `--i18n-check-ja` 预览英语或日语界面，附加 `--normal-window` 可临时切换为普通窗口。演示窗口需由使用者自行关闭。
+
 ## 数据与并发
 
 账户、加密日程和日志仍在 `%APPDATA%\DayNest` 的 `config.json`、`cache.dat` 和 `sync.log`，外观与位置在 `%LOCALAPPDATA%\DayNest`。保留旧配置未知字段，沿用账户/缓存格式；删除旧 UI 代码不迁移或删除用户数据。

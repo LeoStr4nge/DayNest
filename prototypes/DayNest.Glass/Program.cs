@@ -15,13 +15,15 @@ internal static class Program {
   }
   if(args.Contains("--instance-probe"))return InstanceChecks.RunProbe(args);
   if(args.Contains("--features-check")&&!InstanceChecks.IsWindowCheck)return 2;
+  bool demo=args.Contains("--demo");
   var selectedLanguage = args.Contains("--i18n-check-ja") ? "ja-JP" : args.Contains("--i18n-check") ? "en-US" :
-   InstanceChecks.IsWindowCheck ? "zh-CN" : PreviewSettings.Load().Language;
+   InstanceChecks.IsWindowCheck || demo ? "zh-CN" : PreviewSettings.Load().Language;
   I18n.Language = selectedLanguage is "en-US" or "ja-JP" ? selectedLanguage : "zh-CN";
   System.Globalization.CultureInfo.DefaultThreadCurrentCulture = I18n.Culture;
   System.Globalization.CultureInfo.CurrentCulture = I18n.Culture;
   SingleInstance? instance;
-  try { instance=SingleInstance.RegisterOrRedirect(args.Contains("--normal-window"),InstanceChecks.WindowScope(args)); }
+  try { instance=SingleInstance.RegisterOrRedirect(args.Contains("--normal-window"),
+   demo ? "9725f7f6-71f5-444c-9d3a-1ad58aca4dd0" : InstanceChecks.WindowScope(args)); }
   catch(Exception error) when(error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or InvalidOperationException) {
    InstanceChecks.StartupFailure(error);return 1;
   }
@@ -58,6 +60,7 @@ public sealed partial class CalendarApp : Application {
  bool recentOverview;
  readonly StackPanel pinned=new(){Spacing=8};
  readonly bool stressMode=Environment.GetCommandLineArgs().Contains("--render-stress");
+ readonly bool demoMode=Environment.GetCommandLineArgs().Contains("--demo");
  CancellationTokenSource? requestCancellation;
  ScrollViewer surface=null!;
  readonly GlassBackdrop glass=new();
@@ -77,9 +80,8 @@ public sealed partial class CalendarApp : Application {
  DateTime selected=DateTime.Today;
  int generation; bool closed;
  protected override void OnLaunched(LaunchActivatedEventArgs args) {
-  ReadAppearance(InstanceChecks.IsWindowCheck
-   ? new Appearance(Language: Environment.GetCommandLineArgs().Contains("--i18n-check-ja") ? "ja-JP" :
-       Environment.GetCommandLineArgs().Contains("--i18n-check") ? "en-US" : "zh-CN")
+  ReadAppearance(InstanceChecks.IsWindowCheck || demoMode
+   ? new Appearance(Language: I18n.Language)
    : PreviewSettings.Load(),true);
   todayButton.Content=I18n.T("今日");recentButton.Content=I18n.T("近期");refresh.Content=I18n.T("刷新");
   if(Environment.GetCommandLineArgs().Contains("--normal-window"))desktopMode=false;
@@ -124,10 +126,11 @@ public sealed partial class CalendarApp : Application {
   desktopWidget=new DesktopWidget(window,dragRegion,error=>{desktopMode=false;exitWidget.Visibility=Visibility.Collapsed;status.Text=error;},!DiagnosticMode);
   ApplyAppearance();
   window.AppWindow.Resize(new Windows.Graphics.SizeInt32(440,800));
-  if(!InstanceChecks.IsWindowCheck)desktopWidget.RestorePosition();
+  if(!InstanceChecks.IsWindowCheck && !demoMode)desktopWidget.RestorePosition();
   window.Closed+=(_,_)=>{desktopWidget?.Dispose();closed=true;StopCalendarLoading();foreach(var p in workers.ToArray())try{if(!p.HasExited)p.Kill(true);}catch{}};
   if(InstanceChecks.IsWindowCheck)PrepareCalendarFlowCheck();
   if(Environment.GetCommandLineArgs().Contains("--calendar-flow-check"))PrepareCalendarFlowCheck();
+  if(demoMode)PrepareDemoData();
   window.Activate(); StartCalendarLoading();
   if(Environment.GetCommandLineArgs().Contains("--calendar-flow-check"))RunCalendarFlowCheck();
   if(stressMode)RunRenderStress();

@@ -13,7 +13,7 @@ sealed partial class CalendarApp
     string? startupNotice;
     ThemePalette palette = Themes.Get("midnight");
     bool DiagnosticMode => InstanceChecks.IsWindowCheck || stressMode || Environment.GetCommandLineArgs().Any(a =>
-        a is "--calendar-flow-check" or "--desktop-check" or "--features-check" or "--offline-preview");
+        a is "--calendar-flow-check" or "--desktop-check" or "--features-check" or "--offline-preview" or "--demo");
     Appearance CurrentAppearance() => new(dark, glassDensity, glassEnabled, desktopMode, themeId, accentColor, autoStart, removeExpiredPins, language);
     void ReadAppearance(Appearance saved, bool initial = false)
     {
