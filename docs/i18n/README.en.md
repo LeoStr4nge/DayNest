@@ -8,11 +8,11 @@ DayNest is a desktop calendar widget for Windows 11 x64, available in Simplified
 
 ## Preview
 
-These screenshots use offline sample data, not a personal calendar. Click an image to view it at full size. The screenshots show the Simplified Chinese interface.
+These screenshots show the English interface with offline sample data, not a personal calendar. Click an image to view it at full size.
 
 | Today and countdown | Month and calendar |
 | :---: | :---: |
-| [![DayNest Today view with a countdown and sample events](../../assets/screenshots/today-demo.png)](../../assets/screenshots/today-demo.png) | [![DayNest month view with a calendar and sample events](../../assets/screenshots/month-demo.png)](../../assets/screenshots/month-demo.png) |
+| [![DayNest Today view with a countdown and sample events](../../assets/screenshots/today-demo-en.png)](../../assets/screenshots/today-demo-en.png) | [![DayNest month view with a calendar and sample events](../../assets/screenshots/month-demo-en.png)](../../assets/screenshots/month-demo-en.png) |
 
 ## Download and get started
 
