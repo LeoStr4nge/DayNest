@@ -4,6 +4,14 @@
 
 DayNest 是面向 Windows 11 x64 的桌面日历小组件，支持简体中文、英语和日语。当前主界面使用 C# / WinUI 3，Python 后端负责 CalDAV 同步、日程解析和加密缓存。旧 Tk 界面及其安装包构建流程已退役，旧账户和缓存仍可沿用。
 
+## 界面预览
+
+以下截图使用离线演示数据，不包含真实日程。点击图片可查看原图。
+
+| 今日视图与倒计时 | 本月视图与月历 |
+| :---: | :---: |
+| [![DayNest 今日视图：倒计时和当日日程](assets/screenshots/today-demo.png)](assets/screenshots/today-demo.png) | [![DayNest 本月视图：月历和日程](assets/screenshots/month-demo.png)](assets/screenshots/month-demo.png) |
+
 ## 安装与启动
 
 下载 [v2.1.0 WinUI 便携版](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.1.0)，完整解压后双击 `DayNest.Glass.exe`。包内附带运行环境，无需另装 Python 或 .NET。需要 Windows 11 x64（build 22000 或更新），目前没有 WinUI 安装向导。
