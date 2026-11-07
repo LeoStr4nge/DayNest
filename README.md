@@ -1,3 +1,5 @@
+[简体中文](README.md) | [English](docs/i18n/README.en.md) | [日本語](docs/i18n/README.ja.md)
+
 # DayNest · 日程小筑
 
 把日程留在桌面，把重要的日子放在眼前。
