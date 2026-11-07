@@ -48,6 +48,7 @@ sealed partial class CalendarApp
         var autoStartToggle = new ToggleSwitch { Header = "登录 Windows 后自动启动", IsOn = autoStart };
         var glassToggle = new ToggleSwitch { Header = "毛玻璃效果", IsOn = glassEnabled };
         var desktopToggle = new ToggleSwitch { Header = "桌面小组件模式", IsOn = desktopMode };
+        var expiredPinsToggle = new ToggleSwitch { Header = "自动移除过期倒计时", IsOn = removeExpiredPins };
         void RecoverNormalWindow()
         {
             original = original with { Desktop = false };
@@ -58,7 +59,9 @@ sealed partial class CalendarApp
         var density = new Slider { Minimum = 15, Maximum = 80, Value = glassDensity * 100, StepFrequency = 1 };
         AutomationProperties.SetName(density, "玻璃浓度");
         appearance.Children.Add(theme); appearance.Children.Add(new TextBlock { Text = "主题颜色" }); appearance.Children.Add(colorRow);
-        appearance.Children.Add(autoStartToggle); appearance.Children.Add(desktopToggle); appearance.Children.Add(glassToggle);
+        appearance.Children.Add(autoStartToggle); appearance.Children.Add(desktopToggle); appearance.Children.Add(expiredPinsToggle);
+        appearance.Children.Add(new TextBlock { Text = "过了日程当天后只取消桌面固定，不删除日历中的日程。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
+        appearance.Children.Add(glassToggle);
         appearance.Children.Add(new TextBlock { Text = "桌面模式下按住顶部三横线区域拖动，Win+D 后仍显示；关闭此选项恢复普通窗口。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
         appearance.Children.Add(densityLabel); appearance.Children.Add(density);
         appearance.Children.Add(new TextBlock { Text = "主题与玻璃效果即时预览；桌面模式在关闭设置后切换。保存后下次启动沿用，取消恢复原外观。", TextWrapping = TextWrapping.Wrap, Opacity = .75 });
@@ -67,6 +70,7 @@ sealed partial class CalendarApp
             themeId = Themes.All[Math.Max(0, theme.SelectedIndex)].Id; accentColor = draftAccent;
             autoStart = autoStartToggle.IsOn; glassEnabled = glassToggle.IsOn; glassDensity = density.Value / 100;
             desktopMode = desktopToggle.IsOn;
+            removeExpiredPins = expiredPinsToggle.IsOn;
             density.IsEnabled = glassEnabled;
             densityLabel.Text = $"玻璃浓度 {density.Value:0}%";
             ApplyAppearance();
@@ -87,6 +91,7 @@ sealed partial class CalendarApp
         autoStartToggle.Toggled += (_, _) => Preview();
         glassToggle.Toggled += (_, _) => Preview();
         desktopToggle.Toggled += (_, _) => Preview();
+        expiredPinsToggle.Toggled += (_, _) => Preview();
         density.ValueChanged += (_, _) => Preview();
         if (Environment.GetCommandLineArgs().Contains("--features-check"))
             featureAppearancePreview = (id, color, startup) =>

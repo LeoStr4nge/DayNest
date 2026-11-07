@@ -16,6 +16,24 @@ def run(*args):
     subprocess.run(list(map(str, args)), cwd=ROOT, check=True)
 
 
+def prune_winui_locales(bundle):
+    """Keep Chinese UI resources and English fallback in the portable bundle."""
+    keep = {'zh-cn', 'en-us'}
+    mui_files = {'Microsoft.ui.xaml.dll.mui', 'Microsoft.UI.Xaml.Phone.dll.mui'}
+    removed = []
+    for folder in bundle.iterdir():
+        if not folder.is_dir() or folder.name.lower() in keep:
+            continue
+        files = list(folder.iterdir())
+        if {path.name for path in files} != mui_files or not all(path.is_file() for path in files):
+            continue
+        for path in files:
+            path.unlink()
+        folder.rmdir()
+        removed.append(folder.name)
+    return removed
+
+
 def build(version, crt, crt_licenses, replace=False):
     if sys.platform != 'win32': raise RuntimeError('Build on Windows x64')
     # Unique staging avoids deleting existing builds or release artifacts.
@@ -26,6 +44,8 @@ def build(version, crt, crt_licenses, replace=False):
     run('dotnet', 'publish', ROOT / 'prototypes/DayNest.Glass/DayNest.Glass.csproj', '-c', 'Release',
         '-r', 'win-x64', '--self-contained', 'true', '-p:Platform=x64', '-p:PublishSingleFile=false',
         '-p:PublishTrimmed=false', '-p:DebugType=None', '-p:DebugSymbols=false', '-p:Version=' + version, '-o', bundle, '--nologo')
+    pruned_locales = prune_winui_locales(bundle)
+    print(f'Removed {len(pruned_locales)} unused WinUI language folders from the portable bundle.')
     run(sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN',
         '--name', 'DayNest.Bridge', '--console', '--onedir', '--paths', ROOT,
         '--hidden-import', 'dateutil.zoneinfo', '--exclude-module', 'tkinter', '--distpath', stage / 'python',

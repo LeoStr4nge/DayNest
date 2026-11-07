@@ -153,6 +153,32 @@ def set_pin(payload, remove=False):
         guard.close()
 
 
+def prune_expired_pins(today=None):
+    """Remove only local fixed countdowns whose start day is already past."""
+    today = today or datetime.now().astimezone().date()
+    guard = c.SingleInstance()
+    try:
+        if not guard.acquire():
+            raise ValueError('DayNest 正在同步或保存数据，请稍后再移除过期倒计时。')
+        config = c.load_config()
+        cache = c.load_cache()
+        if not c.cache_matches(cache, config):
+            return dict(ok=True, pins=[])
+        def keep(pin):
+            try:
+                return datetime.fromisoformat(pin['start']).astimezone().date() >= today
+            except (KeyError, TypeError, ValueError, AttributeError):
+                return True
+        pins = cache.get('pins', [])
+        remaining = [pin for pin in pins if keep(pin)]
+        if len(remaining) != len(pins):
+            cache['pins'] = remaining
+            c.save_cache(cache)
+        return dict(ok=True, pins=pin_views(cache, config))
+    finally:
+        guard.close()
+
+
 def mutate_event(payload, delete=False):
     guard = c.SingleInstance()
     try:
@@ -345,6 +371,7 @@ if __name__ == '__main__':
         elif sys.argv[1] == 'delete-event': result = mutate_event(json.load(sys.stdin), delete=True)
         elif sys.argv[1] == 'add-pin': result = set_pin(json.load(sys.stdin))
         elif sys.argv[1] == 'remove-pin': result = set_pin(json.load(sys.stdin), remove=True)
+        elif sys.argv[1] == 'prune-expired-pins': result = prune_expired_pins()
         elif sys.argv[1] == 'get-calendars': result = calendar_choices(json.load(sys.stdin))
         elif sys.argv[1] == 'create-event': result = create_event(json.load(sys.stdin))
         else: result=read_month(sys.argv[1], '--refresh' in sys.argv, '--no-pin-sync' not in sys.argv)

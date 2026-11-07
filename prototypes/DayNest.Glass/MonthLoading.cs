@@ -39,6 +39,7 @@ sealed partial class CalendarApp
                 lastToday = DateTime.Today;
                 if (calendar.Visibility == Visibility.Collapsed) { selected = lastToday; await Load(false); return; }
                 DrawCalendar();
+                await Load(false); return;
             }
             if (months.TryGetValue(selected.ToString("yyyy-MM"), out var data)) RenderPins(data.Pins ?? []);
         };
@@ -96,7 +97,7 @@ sealed partial class CalendarApp
                 if (payload != null) await process.StandardInput.WriteAsync(JsonSerializer.Serialize(payload));
                 process.StandardInput.Close();
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                timeout.CancelAfter(TimeSpan.FromSeconds(command is "save-account" or "get-account" or "add-pin" or "remove-pin" ? 20 : 120));
+                timeout.CancelAfter(TimeSpan.FromSeconds(command is "save-account" or "get-account" or "add-pin" or "remove-pin" or "prune-expired-pins" ? 20 : 120));
                 try { await process.WaitForExitAsync(timeout.Token); }
                 catch
                 {
@@ -195,6 +196,12 @@ sealed partial class CalendarApp
         }
         finally
         {
+            if (!closed && token == generation)
+            {
+                try { await RemoveExpiredPins(request.Token); }
+                catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+                catch { status.Text += " · 过期倒计时暂时无法移除，请稍后刷新。"; }
+            }
             if (ReferenceEquals(requestCancellation, request)) requestCancellation = null;
             if (!closed && token == generation)
             {

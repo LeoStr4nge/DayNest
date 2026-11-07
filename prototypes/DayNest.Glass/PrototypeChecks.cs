@@ -18,8 +18,15 @@ static class PrototypeChecks
             Check(PreviewSettings.Load(path) == new Appearance(), "Corrupt settings must recover");
             File.WriteAllText(path, "{\"Dark\":false,\"Density\":0.38,\"Glass\":true}");
             Check(PreviewSettings.Load(path) == new Appearance(false, .38, true, true), "Existing appearance settings must default to desktop mode");
+            Check(PreviewSettings.Load(path).RemoveExpiredPins, "Existing settings must default to removing expired countdowns");
             PreviewSettings.Save(new Appearance(false, .67, false, false), path);
             Check(PreviewSettings.Load(path) == new Appearance(false, .67, false, false), "Theme, glass, desktop mode and density must survive restart");
+            PreviewSettings.Save(new Appearance(RemoveExpiredPins: false), path);
+            Check(!PreviewSettings.Load(path).RemoveExpiredPins, "Keeping expired countdowns must survive restart");
+            var pinDay = new DateTime(2026, 11, 5);
+            var pinDates = new[] { -1, 0, 1 }.Select(offset => new Pin(offset.ToString(), new DateTimeOffset(pinDay.AddDays(offset), TimeZoneInfo.Local.GetUtcOffset(pinDay)))).ToArray();
+            Check(CalendarApp.VisiblePins(pinDates, true, pinDay).Select(pin => pin.Title).SequenceEqual(new[] { "0", "1" }), "Only days before today may disappear");
+            Check(CalendarApp.VisiblePins(pinDates, false, pinDay).Length == 3, "Disabled cleanup must keep past countdowns visible");
             File.WriteAllText(path, "{\"Dark\":false,\"Density\":20}");
             Check(PreviewSettings.Load(path) == new Appearance(), "Invalid density must recover");
             Check(Directory.GetFiles(directory, "*.tmp").Length == 0, "Atomic save must clean temporary files");

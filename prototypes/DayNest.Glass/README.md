@@ -13,7 +13,7 @@ dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=
 
 重新编译前先关闭该输出目录下运行的窗口。
 
-发布便携包：在已安装 PyInstaller 的 Windows x64 Python 环境运行 `python tools/build_glass_release.py --version 2.0.1 --crt-dir <VS 的 x64/Microsoft.VC*.CRT 目录> --crt-license-dir <VS 的 Licenses/语言目录>`。脚本发布自带运行时的 .NET 前端并冻结 Python 后端，附带 VC++ 运行库，包不依赖源码目录。产物在 `release/`，附带 GPL 和第三方许可证、构建版本信息及 SHA-256 校验。发布说明见 `docs/release-v2.0.1.md`。
+发布便携包：在已安装 PyInstaller 的 Windows x64 Python 环境运行 `python tools/build_glass_release.py --version 2.0.1 --crt-dir <VS 的 x64/Microsoft.VC*.CRT 目录> --crt-license-dir <VS 的 Licenses/语言目录>`。脚本发布自带运行时的 .NET 前端并冻结 Python 后端，附带 VC++ 运行库，包不依赖源码目录。打包时只保留 WinUI 控件的简体中文和英文回退语言资源；其他系统语言会使用英文控件文本。产物在 `release/`，附带 GPL 和第三方许可证、构建版本信息及 SHA-256 校验。发布说明见 `docs/release-v2.0.1.md`。
 
 ## 当前功能
 
@@ -85,7 +85,7 @@ dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=
 
 日程详情上方可“固定到桌面”，已有固定项会显示“已固定到桌面”。编辑草稿时该按钮禁用，先保存修改后再固定。重复日程、全天日程也可固定，不受服务器写入限制。倒计时右键菜单（键盘也可用菜单键）提供“取消固定”，只移除固定项，不删除服务端日程。
 
-固定项操作通过绑定账户与操作用途的 DPAPI 令牌完成，不调用 CalDAV。添加去重，取消时只移除所选固定项；所有内存月份同步更新，重启后从加密缓存恢复。后台读写通过互斥量协调；过期固定项显示“已过 N 天”，仍可取消。
+固定项操作通过绑定账户与操作用途的 DPAPI 令牌完成，不调用 CalDAV。添加去重，取消时只移除所选固定项；所有内存月份同步更新，重启后从加密缓存恢复。后台读写通过互斥量协调。默认在日程当天结束后自动移除过期倒计时，只取消本地固定，不删除日历日程；可在“设置 → 外观与个性化”中关闭，关闭后过期固定项继续显示“已过 N 天”。
 
 固定项按时间排序，备注仅显示一行省略预览，点击可打开完整详情；缺少服务器元数据的旧固定项也能只读查看。倒计时跨日自动更新；相同内容不会每分钟重建卡片，避免打断右键菜单。
 

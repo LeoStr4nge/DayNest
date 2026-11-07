@@ -10,6 +10,19 @@ sealed partial class CalendarApp
     Pin[]? renderedPins;
     DateTime renderedPinDay;
     string? renderedPinTheme;
+    internal static Pin[] VisiblePins(Pin[] pins, bool removeExpired, DateTime today) =>
+        removeExpired ? pins.Where(pin => pin.Start.LocalDateTime.Date >= today.Date).ToArray() : pins;
+
+    async Task RemoveExpiredPins(CancellationToken cancellation)
+    {
+        if (!removeExpiredPins || DiagnosticMode || closed ||
+            !months.Values.Any(month => (month.Pins ?? []).Any(pin => pin.Start.LocalDateTime.Date < DateTime.Today))) return;
+        var response = await BridgeRequest("prune-expired-pins", cancellation: cancellation);
+        if (response.TryGetProperty("error", out _)) throw new InvalidOperationException();
+        var pins = response.GetProperty("pins").Deserialize<Pin[]>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        foreach (string key in months.Keys.ToArray()) months[key] = months[key] with { Pins = pins };
+        RenderPins(pins);
+    }
     async Task<bool> ChangePin(string command, string? handle, TextBlock notice)
     {
         if (writeBusy || closed) return false;
@@ -32,7 +45,8 @@ sealed partial class CalendarApp
 
     void RenderPins(Pin[] pins)
     {
-        string appearance = themeId + "|" + Themes.Hex(palette.Accent);
+        pins = VisiblePins(pins, removeExpiredPins, DateTime.Today);
+        string appearance = themeId + "|" + Themes.Hex(palette.Accent) + "|" + removeExpiredPins;
         if (renderedPinDay == DateTime.Today && renderedPinTheme == appearance &&
             renderedPins != null && renderedPins.SequenceEqual(pins) && pinned.Children.Count == pins.Length) return;
         renderedPins = pins; renderedPinDay = DateTime.Today; renderedPinTheme = appearance;

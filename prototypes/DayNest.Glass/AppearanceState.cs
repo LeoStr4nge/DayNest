@@ -8,16 +8,18 @@ sealed partial class CalendarApp
     string themeId = "midnight";
     string? accentColor;
     bool autoStart;
+    bool removeExpiredPins = true;
     string? startupNotice;
     ThemePalette palette = Themes.Get("midnight");
     bool DiagnosticMode => InstanceChecks.IsWindowCheck || stressMode || Environment.GetCommandLineArgs().Any(a =>
         a is "--calendar-flow-check" or "--desktop-check" or "--features-check" or "--offline-preview");
-    Appearance CurrentAppearance() => new(dark, glassDensity, glassEnabled, desktopMode, themeId, accentColor, autoStart);
+    Appearance CurrentAppearance() => new(dark, glassDensity, glassEnabled, desktopMode, themeId, accentColor, autoStart, removeExpiredPins);
     void ReadAppearance(Appearance saved, bool initial = false)
     {
         dark = saved.Dark; glassDensity = saved.Density; glassEnabled = saved.Glass; desktopMode = saved.Desktop;
         themeId = Themes.Id(saved.Theme, saved.Dark); accentColor = Themes.ValidColor(saved.Accent) ? saved.Accent : null;
         autoStart = saved.AutoStart ?? false;
+        removeExpiredPins = saved.RemoveExpiredPins;
         if (initial && !DiagnosticMode)
         {
             try

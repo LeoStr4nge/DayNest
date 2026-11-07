@@ -36,6 +36,18 @@ with patch.object(c, 'load_config', return_value=config), \
     legacy = bridge.pin_views(state, config)[0]
     bridge.set_pin(dict(handle=legacy['actionHandle']), remove=True)
     assert state['pins'] == []
+    state['pins'] = [dict(title=title, start=(begin + timedelta(days=offset)).isoformat())
+                     for title, offset in [('Past', -1), ('Today', 0), ('Future', 1)]]
+    cleaned = bridge.prune_expired_pins(begin.date())
+    assert [pin['title'] for pin in cleaned['pins']] == ['Today', 'Future']
+    assert [pin['title'] for pin in state['pins']] == ['Today', 'Future']
+    assert state['events'] == c.serialize_events([event]), 'Expiry cleanup must not delete calendar events'
+    saved.reset_mock()
+    bridge.prune_expired_pins(begin.date())
+    saved.assert_not_called(), 'Unchanged pins must not rewrite encrypted cache'
+    with patch.object(c, 'load_config', return_value=dict(config, username='other-account')):
+        assert bridge.prune_expired_pins(begin.date())['pins'] == []
+    saved.assert_not_called(), 'Another account must not change the cached pins'
     recurring = (*event[:4], dict(event[4], recurring=True))
     recurring_view = bridge.event_view(recurring, config)
     assert not recurring_view['deletable'] and recurring_view['pinHandle']
@@ -50,4 +62,4 @@ with patch.object(c, 'load_config', return_value=config), \
     except ValueError: pass
     saved.assert_not_called()
     network.assert_not_called()
-print('Pin add/reload, deduplication, selected/legacy removal, recurrence, account isolation and no-server-write checks passed.')
+print('Pin add/reload, expiry cleanup, deduplication, selected/legacy removal, recurrence, account isolation and no-server-write checks passed.')
