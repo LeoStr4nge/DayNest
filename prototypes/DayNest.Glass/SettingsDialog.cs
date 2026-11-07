@@ -39,8 +39,8 @@ sealed partial class CalendarApp
         foreach (var preset in Themes.All) theme.Items.Add(I18n.T(preset.Name));
         theme.SelectedIndex = Array.FindIndex(Themes.All, t => t.Id == themeId);
         var languageChoice = new ComboBox { Header = I18n.T("界面语言"), HorizontalAlignment = HorizontalAlignment.Stretch };
-        languageChoice.Items.Add("简体中文"); languageChoice.Items.Add("English");
-        languageChoice.SelectedIndex = language == "en-US" ? 1 : 0;
+        languageChoice.Items.Add("简体中文"); languageChoice.Items.Add("English"); languageChoice.Items.Add("日本語");
+        languageChoice.SelectedIndex = language switch { "en-US" => 1, "ja-JP" => 2, _ => 0 };
         string? draftAccent = accentColor;
         bool updatingPicker = false;
         var colorPicker = new ColorPicker { Color = palette.Accent, IsAlphaEnabled = false, IsHexInputVisible = true, Width = 280 };
@@ -178,7 +178,7 @@ sealed partial class CalendarApp
                 {
                     try
                     {
-                        language = languageChoice.SelectedIndex == 1 ? "en-US" : "zh-CN";
+                        language = languageChoice.SelectedIndex switch { 1 => "en-US", 2 => "ja-JP", _ => "zh-CN" };
                         if (!InstanceChecks.IsWindowCheck) StartupRegistration.Save(CurrentAppearance());
                         startupNotice = null;
                         appearanceSaved = true; e.Cancel = false;

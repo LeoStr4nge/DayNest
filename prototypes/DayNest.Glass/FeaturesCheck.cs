@@ -17,6 +17,15 @@ sealed partial class CalendarApp
         {
             await Task.Delay(350); // Initial XAML layout must exist before opening dialogs.
             await (startupLoad ?? Task.CompletedTask);
+            if (I18n.Language == "ja-JP")
+            {
+                monthOverview = true; calendar.Visibility = Visibility.Visible; DrawCalendar();
+                var monthGrid = calendar.Children.OfType<Grid>().Last();
+                Check(monthGrid.Children.OfType<TextBlock>().Any(label =>
+                    Grid.GetRow(label) == 0 && Grid.GetColumn(label) == 0 && label.Text == "日"),
+                    "Japanese month view must start with Sunday");
+                monthOverview = false; calendar.Visibility = Visibility.Collapsed; DrawCalendar();
+            }
             var commandRow = page.Children.OfType<Grid>().FirstOrDefault(row =>
                 row.Children.OfType<Button>().Any(button => Equals(button.Content, I18n.T("+ 日程"))) &&
                 row.Children.OfType<Button>().Any(button => Equals(button.Content, I18n.T("设置"))));
@@ -31,6 +40,8 @@ sealed partial class CalendarApp
             Check(Math.Abs(settingsButton.TransformToVisual(page).TransformPoint(new Windows.Foundation.Point(0, 0)).X - settingsLeft) < .1 &&
                 settingsButton.TransformToVisual(page).TransformPoint(new Windows.Foundation.Point(settingsButton.ActualWidth, 0)).X <= page.ActualWidth + 1,
                 "Settings must fit inside the window after refresh");
+            Check(refresh.TransformToVisual(page).TransformPoint(new Windows.Foundation.Point(refresh.ActualWidth, 0)).X <= page.ActualWidth + 1,
+                "Refresh must fit beside the localized view selector");
             Check(viewThumbWidths.Length == 3 && viewSlotWidths.Length == 3 &&
                 Enumerable.Range(0, 3).All(i => viewSlotWidths[i] >= viewThumbWidths[i] + 8) &&
                 Math.Abs(viewTrack.Width - viewSlotWidths.Sum()) < .1,
@@ -57,6 +68,13 @@ sealed partial class CalendarApp
             var settingsTask = ShowSettings();
             await Task.Delay(80);
             Check(settingsOpen && instanceCheckDialog != null && featureAppearancePreview != null, "Settings did not open");
+            var settingsBody = (StackPanel)instanceCheckDialog!.Content;
+            var settingsViewport = (Grid)settingsBody.Children[1];
+            var appearanceFields = (StackPanel)((ScrollViewer)settingsViewport.Children[0]).Content;
+            var languageChoice = (ComboBox)appearanceFields.Children[0];
+            Check(languageChoice.Items.Count == 3 && languageChoice.SelectedIndex ==
+                (I18n.Language switch { "en-US" => 1, "ja-JP" => 2, _ => 0 }),
+                "Settings must show and select all three display languages");
             featureAppearancePreview!("sand", "#123456", true);
             await Task.Delay(50);
             Check(themeId == "sand" && !dark && accentColor == "#123456" && autoStart, "Preset/color/startup preview did not reach application state");

@@ -21,7 +21,7 @@ sealed partial class CalendarApp
         themeId = Themes.Id(saved.Theme, saved.Dark); accentColor = Themes.ValidColor(saved.Accent) ? saved.Accent : null;
         autoStart = saved.AutoStart ?? false;
         removeExpiredPins = saved.RemoveExpiredPins;
-        language = saved.Language == "en-US" ? "en-US" : "zh-CN";
+        language = saved.Language is "en-US" or "ja-JP" ? saved.Language : "zh-CN";
         if (initial) I18n.Language = language;
         if (initial && !DiagnosticMode)
         {

@@ -32,6 +32,20 @@ static class PrototypeChecks
                 "English delete confirmation must translate its dynamic title");
             Check(!I18n.T("部分固定项暂未能更新，已保留上次数据。 日程已同步，但缓存保存失败；重启后需要重新同步。").Any(c => c is >= '\u4e00' and <= '\u9fff'),
                 "Combined bridge warnings must translate completely");
+            Check(I18n.TranslationKeysMatch, "English and Japanese translation keys must stay in sync");
+            PreviewSettings.Save(new Appearance(Language: "ja-JP"), path);
+            Check(PreviewSettings.Load(path).Language == "ja-JP", "Japanese language choice must survive restart");
+            I18n.Language = "ja-JP";
+            Check(I18n.T("今日") == "今日" && I18n.T("近期") == "今後" && I18n.T("还有 3 天") == "あと3日" &&
+                I18n.T("认证失败：请检查日历账户和密码，部分服务需要使用应用专用密码").StartsWith("認証できませんでした"),
+                "Japanese calendar terms and bridge messages must translate");
+            Check(new DateTime(2026, 11, 7).ToString(I18n.T("yyyy 年 M 月日程"), I18n.Culture) == "2026年11月の予定",
+                "Japanese month heading must use local date order");
+            Check(I18n.T("已同步 · 12:34") == "同期済み · 12:34" &&
+                I18n.T("确定删除“Example”？\n\n此操作会从日历服务中删除日程，其他设备也会同步删除。").Contains("ほかのデバイス"),
+                "Dynamic Japanese status and confirmation messages must translate");
+            Check(I18n.Culture.DateTimeFormat.FirstDayOfWeek == DayOfWeek.Sunday,
+                "Japanese calendar should begin on Sunday");
             I18n.Language = "zh-CN";
             PreviewSettings.Save(new Appearance(false, .67, false, false), path);
             Check(PreviewSettings.Load(path) == new Appearance(false, .67, false, false), "Theme, glass, desktop mode and density must survive restart");

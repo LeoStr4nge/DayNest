@@ -13,7 +13,7 @@ dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=
 
 重新编译前先关闭该输出目录下运行的窗口。
 
-发布便携包：在已安装 PyInstaller 的 Windows x64 Python 环境运行 `python tools/build_glass_release.py --version 2.0.1 --crt-dir <VS 的 x64/Microsoft.VC*.CRT 目录> --crt-license-dir <VS 的 Licenses/语言目录>`。脚本发布自带运行时的 .NET 前端并冻结 Python 后端，附带 VC++ 运行库，包不依赖源码目录。打包时只保留 WinUI 控件的简体中文和英文回退语言资源；其他系统语言会使用英文控件文本。产物在 `release/`，附带 GPL 和第三方许可证、构建版本信息及 SHA-256 校验。发布说明见 `docs/release-v2.0.1.md`。
+发布便携包：在已安装 PyInstaller 的 Windows x64 Python 环境运行 `python tools/build_glass_release.py --version 2.1.0 --crt-dir <VS 的 x64/Microsoft.VC*.CRT 目录> --crt-license-dir <VS 的 Licenses/语言目录>`。脚本发布自带运行时的 .NET 前端并冻结 Python 后端，附带 VC++ 运行库，包不依赖源码目录。打包时保留 WinUI 控件的简体中文、英语和日语资源；其他系统语言会使用英文控件文本。产物在 `release/`，附带 GPL 和第三方许可证、构建版本信息及 SHA-256 校验。发布说明见 `docs/release-v2.1.0.md`。
 
 ## 当前功能
 
@@ -55,7 +55,7 @@ dotnet build prototypes/DayNest.Glass/DayNest.Glass.csproj -c Debug -p:Platform=
 
 ## 两模块设置
 
-主界面的“设置”打开“外观与个性化”和“日历账户”。外观页可选择简体中文或英语，默认沿用简体中文；语言选择保存后在下次启动时生效。主题、颜色、毛玻璃开关和玻璃浓度即时预览；仅点击“保存外观”后持久化，取消或转到账户页保存不会保存外观及自动启动草稿。桌面模式的窗口框架变化在面板关闭后应用。
+主界面的“设置”打开“外观与个性化”和“日历账户”。外观页可选择简体中文、英语或日语，默认沿用简体中文；语言选择保存后在下次启动时生效。日语界面使用日语日期与星期写法，月历从周日开始。主题、颜色、毛玻璃开关和玻璃浓度即时预览；仅点击“保存外观”后持久化，取消或转到账户页保存不会保存外观及自动启动草稿。桌面模式的窗口框架变化在面板关闭后应用。
 
 账户页支持 iCloud 预设与自定义 HTTPS CalDAV。密码通过重定向标准输入交给 Python，使用原版 DPAPI 加密保存；界面只读取 hasPassword 状态。留空保留旧密码，更换账户或服务必须重新输入。保存时使用后端互斥标识串行化读写，并保留已有配置中的其他字段。更换连接会清空原版旧账户的加密缓存与固定项，新界面同时清除内存列表，并同步所选月份；同步失败仍保留已保存的账户，可再次刷新。
 

@@ -17,8 +17,8 @@ def run(*args):
 
 
 def prune_winui_locales(bundle):
-    """Keep Chinese UI resources and English fallback in the portable bundle."""
-    keep = {'zh-cn', 'en-us'}
+    """Keep Chinese, English and Japanese WinUI resources in the portable bundle."""
+    keep = {'zh-cn', 'en-us', 'ja-jp'}
     mui_files = {'Microsoft.ui.xaml.dll.mui', 'Microsoft.UI.Xaml.Phone.dll.mui'}
     removed = []
     for folder in bundle.iterdir():
@@ -93,6 +93,22 @@ def build(version, crt, crt_licenses, replace=False):
         '此版本未进行代码签名。\n'
         '许可证：GPL-3.0-only；依赖许可见 licenses。\n'
         '完整源代码及构建脚本：https://github.com/LeoStr4nge/DayNest\n', encoding='utf-8-sig')
+    (bundle / 'README-en.txt').write_text(
+        f'DayNest {version} · Portable calendar for Windows 11 x64\n\n'
+        'Extract the entire archive, then run DayNest.Glass.exe. No separate Python or .NET installation is needed.\n'
+        'The interface starts in Simplified Chinese. Open 设置 → 外观与个性化 → 界面语言, choose English, save, then restart.\n'
+        'Use DayNest.Glass.exe --normal-window if the desktop widget is difficult to find.\n'
+        'Calendar accounts and cached events remain under %APPDATA%\\DayNest; appearance and language remain under %LOCALAPPDATA%\\DayNest.\n'
+        'Quit an older version before updating. This release is unsigned. Dependency licenses are in licenses/.\n',
+        encoding='utf-8')
+    (bundle / 'README-ja.txt').write_text(
+        f'DayNest {version} · Windows 11 x64向けポータブルカレンダー\n\n'
+        'ZIPをすべて展開し、DayNest.Glass.exeを起動してください。Pythonや.NETの別途インストールは不要です。\n'
+        '初期表示は簡体字中国語です。设置 → 外观与个性化 → 界面语言で「日本語」を選び、保存してから再起動してください。\n'
+        'ウィジェットが見つからない場合は、DayNest.Glass.exe --normal-windowで通常のウィンドウに切り替えられます。\n'
+        'アカウントと予定のキャッシュは%APPDATA%\\DayNest、外観と言語の設定は%LOCALAPPDATA%\\DayNestに保存されます。\n'
+        '更新前に旧バージョンを終了してください。このバージョンはコード署名されていません。依存ライセンスはlicenses/を参照してください。\n',
+        encoding='utf-8')
     manifest = dict(version=version, commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                     python=sys.version.split()[0], dependencies={p: importlib.metadata.version(p) for p in ('python-dateutil', 'six', 'pyinstaller')})
     (bundle / 'BUILD.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
@@ -111,7 +127,7 @@ def build(version, crt, crt_licenses, replace=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', default='2.0.1')
+    parser.add_argument('--version', default='2.1.0')
     parser.add_argument('--crt-dir', type=Path, required=True, help='Visual Studio x64 Microsoft.VC*.CRT redistributable directory')
     parser.add_argument('--crt-license-dir', type=Path, required=True, help='Visual Studio Licenses/<locale> directory')
     parser.add_argument('--replace', action='store_true', help='Replace a reviewed, unpublished artifact')

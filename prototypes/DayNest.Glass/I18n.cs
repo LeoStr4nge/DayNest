@@ -4,10 +4,11 @@ using System.Text.RegularExpressions;
 namespace DayNest.Glass;
 
 // Chinese source text remains the fallback for old settings and unexpected bridge messages.
-static class I18n
+static partial class I18n
 {
     public static string Language { get; set; } = "zh-CN";
     public static CultureInfo Culture => CultureInfo.GetCultureInfo(Language);
+    internal static bool TranslationKeysMatch => English.Keys.ToHashSet().SetEquals(Japanese.Keys);
     static readonly Dictionary<string, string> English = new()
     {
         ["今日"] = "Today", ["近期"] = "Upcoming", ["本月"] = "Month",
@@ -158,9 +159,10 @@ static class I18n
 
     public static string T(string text)
     {
-        if (Language != "en-US") return text;
-        if (English.TryGetValue(text, out var translation)) return translation;
-        var patterns = new (string Pattern, string Replacement)[]
+        if (Language == "zh-CN") return text;
+        var translations = Language == "ja-JP" ? Japanese : English;
+        if (translations.TryGetValue(text, out var translation)) return translation;
+        var patterns = Language == "ja-JP" ? JapanesePatterns : new (string Pattern, string Replacement)[]
         {
             (@"^玻璃浓度 (.+)%$", "Glass intensity $1%"),
             (@"^还有 (\d+) 天$", "$1 days left"), (@"^已过 (\d+) 天$", "$1 days ago"),

@@ -15,9 +15,9 @@ internal static class Program {
   }
   if(args.Contains("--instance-probe"))return InstanceChecks.RunProbe(args);
   if(args.Contains("--features-check")&&!InstanceChecks.IsWindowCheck)return 2;
-  var selectedLanguage = args.Contains("--i18n-check") ? "en-US" :
+  var selectedLanguage = args.Contains("--i18n-check-ja") ? "ja-JP" : args.Contains("--i18n-check") ? "en-US" :
    InstanceChecks.IsWindowCheck ? "zh-CN" : PreviewSettings.Load().Language;
-  I18n.Language = selectedLanguage == "en-US" ? "en-US" : "zh-CN";
+  I18n.Language = selectedLanguage is "en-US" or "ja-JP" ? selectedLanguage : "zh-CN";
   System.Globalization.CultureInfo.DefaultThreadCurrentCulture = I18n.Culture;
   System.Globalization.CultureInfo.CurrentCulture = I18n.Culture;
   SingleInstance? instance;
@@ -78,7 +78,8 @@ public sealed partial class CalendarApp : Application {
  int generation; bool closed;
  protected override void OnLaunched(LaunchActivatedEventArgs args) {
   ReadAppearance(InstanceChecks.IsWindowCheck
-   ? new Appearance(Language: Environment.GetCommandLineArgs().Contains("--i18n-check") ? "en-US" : "zh-CN")
+   ? new Appearance(Language: Environment.GetCommandLineArgs().Contains("--i18n-check-ja") ? "ja-JP" :
+       Environment.GetCommandLineArgs().Contains("--i18n-check") ? "en-US" : "zh-CN")
    : PreviewSettings.Load(),true);
   todayButton.Content=I18n.T("今日");recentButton.Content=I18n.T("近期");refresh.Content=I18n.T("刷新");
   if(Environment.GetCommandLineArgs().Contains("--normal-window"))desktopMode=false;
@@ -212,8 +213,11 @@ public sealed partial class CalendarApp : Application {
   for(int c=0;c<7;c++)grid.ColumnDefinitions.Add(new ColumnDefinition());
   for(int r=0;r<7;r++)grid.RowDefinitions.Add(new RowDefinition{Height=new GridLength(40)});
   string[] days={I18n.T("一"),I18n.T("二"),I18n.T("三"),I18n.T("四"),I18n.T("五"),I18n.T("六"),I18n.T("日")};
+  if(I18n.Language=="ja-JP")days=[days[6],days[0],days[1],days[2],days[3],days[4],days[5]];
   for(int c=0;c<7;c++){var label=new TextBlock{Text=days[c],Opacity=.7,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(label,c);grid.Children.Add(label);}
-  var first=new DateTime(selected.Year,selected.Month,1);var start=first.AddDays(-((int)first.DayOfWeek+6)%7);
+  var first=new DateTime(selected.Year,selected.Month,1);
+  int firstDayOfWeek=I18n.Language=="ja-JP"?(int)DayOfWeek.Sunday:(int)DayOfWeek.Monday;
+  var start=first.AddDays(-(((int)first.DayOfWeek-firstDayOfWeek+7)%7));
   for(int i=0;i<42;i++){
    var date=start.AddDays(i);bool chosen=date==selected;
    var dayEvents=MonthIndex(date.ToString("yyyy-MM")).On(date).Count;
