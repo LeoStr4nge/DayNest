@@ -107,7 +107,10 @@ sealed partial class CalendarApp
                     await Task.WhenAll(stdout, stderr);
                     throw;
                 }
-                string output = await stdout; await stderr;
+                string output = await stdout; string errors = await stderr;
+                if (process.ExitCode != 0 && (errors.Contains("应用程序控制策略已阻止此文件") ||
+                    errors.Contains("application control policy has blocked this file", StringComparison.OrdinalIgnoreCase)))
+                    throw new UnauthorizedAccessException("Windows application control blocked the calendar backend.");
                 if (process.ExitCode != 0) throw new InvalidOperationException();
                 using var document = JsonDocument.Parse(output);
                 return document.RootElement.Clone();

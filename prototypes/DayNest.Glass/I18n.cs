@@ -69,6 +69,8 @@ static partial class I18n
         ["已保存密码；留空保留"] = "Password saved; leave blank to keep it",
         ["iCloud 使用 App 专用密码。密码留空可保留已有密码；更换账户或服务时需重新填写。"] = "iCloud requires an app-specific password. Leave this blank to keep the saved password; enter it again when changing accounts or services.",
         ["账户信息暂时无法读取，请检查 Python 环境后重试。外观仍可单独保存。"] = "Could not read account details. Check the Python environment and try again. Appearance can still be saved.",
+        ["Windows 阻止了日历后端组件运行。请检查便携包来源与系统拦截记录；账户尚未保存。"] = "Windows blocked a calendar backend component. Check the portable package source and Windows block records. The account was not saved.",
+        ["无法读取已有账户。请完整填写账户名和密码后保存，或稍后重试。"] = "Could not read the existing account. Enter both username and password to save, or try again later.",
         ["外观或自动启动保存失败，请检查本地权限后重试。"] = "Could not save appearance or startup settings. Check local permissions and try again.",
         ["请关闭设置后重试读取账户信息。"] = "Close Settings and retry loading account details.",
         ["账户保存失败，请检查 Python 环境及文件权限后重试。"] = "Could not save the account. Check Python and file permissions, then try again.",

@@ -18,6 +18,7 @@ sealed partial class CalendarApp
         CancelMonthRequests();
         var original = CurrentAppearance();
         bool appearanceSaved = false, accountSaved = false, saving = false, accountLoaded = false;
+        string? accountReadError = null;
         var message = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 13 };
         var dialog = new ContentDialog
         {
@@ -136,7 +137,7 @@ sealed partial class CalendarApp
             appearancePage.Visibility = isAccount ? Visibility.Collapsed : Visibility.Visible;
             accountPage.Visibility = isAccount ? Visibility.Visible : Visibility.Collapsed;
             dialog.PrimaryButtonText = isAccount ? I18n.T("保存并同步") : I18n.T("保存外观");
-            message.Text = "";
+            message.Text = isAccount ? accountReadError ?? "" : "";
         }
         appearanceTab.Click += (_, _) => SelectPage(false);
         accountTab.Click += (_, _) => SelectPage(true);
@@ -167,7 +168,16 @@ sealed partial class CalendarApp
                 password.PlaceholderText = config.GetProperty("hasPassword").GetBoolean() ? I18n.T("已保存密码；留空保留") : I18n.T("请输入日历密码");
                 accountLoaded = true;
             }
-            catch { message.Text = I18n.T("账户信息暂时无法读取，请检查 Python 环境后重试。外观仍可单独保存。"); }
+            catch (UnauthorizedAccessException)
+            {
+                accountReadError = I18n.T("Windows 阻止了日历后端组件运行。请检查便携包来源与系统拦截记录；账户尚未保存。");
+                message.Text = accountReadError;
+            }
+            catch
+            {
+                accountReadError = I18n.T("账户信息暂时无法读取，请检查 Python 环境后重试。外观仍可单独保存。");
+                message.Text = accountReadError;
+            }
             if (closed) return;
             dialog.CloseButtonClick += (_, e) => e.Cancel = saving;
             dialog.Closing += (_, e) => { if (saving) e.Cancel = true; };
@@ -186,7 +196,11 @@ sealed partial class CalendarApp
                     catch { message.Text = I18n.T("外观或自动启动保存失败，请检查本地权限后重试。"); }
                     return;
                 }
-                if (!accountLoaded) { message.Text = I18n.T("请关闭设置后重试读取账户信息。"); return; }
+                if (!accountLoaded && (string.IsNullOrWhiteSpace(username.Text) || string.IsNullOrEmpty(password.Password)))
+                {
+                    message.Text = I18n.T("无法读取已有账户。请完整填写账户名和密码后保存，或稍后重试。");
+                    return;
+                }
                 var deferral = e.GetDeferral();
                 saving = true; appearanceTab.IsEnabled = accountTab.IsEnabled = accountPage.IsEnabled = false; dialog.IsPrimaryButtonEnabled = false;
                 CancelMonthRequests(); refresh.IsEnabled = false;
@@ -206,6 +220,7 @@ sealed partial class CalendarApp
                         e.Cancel = false;
                     }
                 }
+                catch (UnauthorizedAccessException) { message.Text = I18n.T("Windows 阻止了日历后端组件运行。请检查便携包来源与系统拦截记录；账户尚未保存。"); }
                 catch { message.Text = I18n.T("账户保存失败，请检查 Python 环境及文件权限后重试。"); }
                 finally
                 {
