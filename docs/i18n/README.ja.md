@@ -16,7 +16,7 @@ DayNest は Windows 11 x64 向けのデスクトップカレンダーウィジ�
 
 ## ダウンロードと初期設定
 
-[v2.1.0 のポータブル版](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.1.0)をダウンロードし、ZIP ファイルをすべて展開してから `DayNest.Glass.exe` を起動してください。Python と .NET の実行環境は同梱されています。Windows 11 x64（ビルド 22000 以降）が必要です。現時点では WinUI 版のインストーラーはありません。
+[v2.1.1 のポータブル版](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.1.1)をダウンロードし、ZIP ファイルをすべて展開してから `DayNest.Glass.exe` を起動してください。Python と .NET の実行環境は同梱されています。Windows 11 x64（ビルド 22000 以降）が必要です。現時点では WinUI 版のインストーラーはありません。
 
 公開中の実行ファイルにはコード署名がありません。ダウンロードしたファイルは、リリースページの `SHA256SUMS.txt` で検証できます。過去のリリースタグとアーカイブも引き続き公開しています。
 

@@ -16,7 +16,7 @@ DayNest 是面向 Windows 11 x64 的桌面日历小组件，支持简体中文�
 
 ## 安装与启动
 
-下载 [v2.1.0 WinUI 便携版](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.1.0)，完整解压后双击 `DayNest.Glass.exe`。包内附带运行环境，无需另装 Python 或 .NET。需要 Windows 11 x64（build 22000 或更新），目前没有 WinUI 安装向导。
+下载 [v2.1.1 WinUI 便携版](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.1.1)，完整解压后双击 `DayNest.Glass.exe`。包内附带运行环境，无需另装 Python 或 .NET。需要 Windows 11 x64（build 22000 或更新），目前没有 WinUI 安装向导。
 
 当前发布版本未进行代码签名。可使用发布页的 `SHA256SUMS.txt` 核对下载文件。历史版本的标签和压缩包继续保留。
 
