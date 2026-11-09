@@ -20,6 +20,8 @@ Download the [v2.1.0 portable release](https://github.com/LeoStr4nge/DayNest/rel
 
 The release is not code signed. You can verify the download with `SHA256SUMS.txt` from the release page. Previous release tags and archives remain available.
 
+If Windows Smart App Control blocks this unsigned release, the current portable version can run only after you turn off **Smart App Control** in **Windows Security → App & browser control → Smart App Control settings**. This turns off that protection for the whole device, not just DayNest. Verify the download source and checksum before deciding whether to turn it off. Running as administrator does not bypass the block. See [Microsoft's Smart App Control FAQ](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions).
+
 On first launch, open **Settings → Calendar account**, select a calendar provider, enter your credentials, and choose **Save and sync**. For iCloud, generate an [app-specific password for your Apple Account](https://account.apple.com/).
 
 ## Using DayNest

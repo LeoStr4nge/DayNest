@@ -20,6 +20,8 @@ DayNest 是面向 Windows 11 x64 的桌面日历小组件，支持简体中文�
 
 当前发布版本未进行代码签名。可使用发布页的 `SHA256SUMS.txt` 核对下载文件。历史版本的标签和压缩包继续保留。
 
+如果 Windows 的“智能应用控制”拦截了未签名的 DayNest，当前便携版需要在 **Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置** 中关闭“智能应用控制”才能运行。此操作会关闭整台设备上的这项保护，而非只放行 DayNest；请先确认下载来源并核对校验值，再自行决定是否关闭。以管理员身份运行无法绕过拦截。参见[微软的智能应用控制说明](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions)。
+
 首次使用在 **设置 → 日历账户** 中选择日历服务、填写账户和密码，再点击“保存并同步”。iCloud 需使用 [Apple 账户](https://account.apple.com/)生成的 App 专用密码。
 
 ## 使用方法

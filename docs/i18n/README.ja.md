@@ -20,6 +20,8 @@ DayNest は Windows 11 x64 向けのデスクトップカレンダーウィジ�
 
 公開中の実行ファイルにはコード署名がありません。ダウンロードしたファイルは、リリースページの `SHA256SUMS.txt` で検証できます。過去のリリースタグとアーカイブも引き続き公開しています。
 
+Windows の「スマート アプリ コントロール」によって署名のない DayNest がブロックされた場合、現在のポータブル版を使うには **Windows セキュリティ → アプリとブラウザー コントロール → スマート アプリ コントロールの設定** で、この機能をオフにする必要があります。この操作は DayNest だけでなく、デバイス全体の保護に影響します。ダウンロード元とチェックサムを確認したうえで、オフにするか判断してください。管理者として実行してもブロックは解除されません。詳しくは[Microsoft の説明](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions)をご覧ください。
+
 初回起動時は **設定 → カレンダーアカウント** でサービスを選び、アカウント情報を入力して **保存して同期** を押してください。iCloud を利用する場合は、[Apple Account](https://account.apple.com/)でアプリ用パスワードを発行してください。
 
 ## 使い方
