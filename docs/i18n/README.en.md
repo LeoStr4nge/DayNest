@@ -53,6 +53,10 @@ DayNest discovers calendars from the service response and follows HTTPS redirect
 
 DayNest currently supports username/password authentication over HTTPS. It does not support OAuth, plain HTTP, or ICS subscription URLs. **The iCloud preset and custom CalDAV connections have been checked with offline simulated protocol tests, but have not yet been retested against live servers.** Compatibility of discovery, sync, and writes with real servers still needs verification.
 
+## Known issues
+
+- **WeChat Input compatibility:** When using WeChat Input for Windows in event or settings fields, the candidate window may not appear, although pressing Space can still commit Chinese text. If this happens, switch to Microsoft Pinyin as a temporary workaround.
+
 ## FAQ
 
 **Can't find the widget?**
