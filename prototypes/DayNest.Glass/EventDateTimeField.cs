@@ -15,8 +15,12 @@ sealed class EventDateTimeField
     readonly TimePickerFlyout timePicker;
     TimeSpan selectedTime;
     public event Action? Changed;
+    public bool TimeEnabled
+    {
+        set => time.IsEnabled = value;
+    }
 
-    public EventDateTimeField(string label, DateTime value)
+    public EventDateTimeField(string label, DateTime value, bool dateOnly = false)
     {
         date = new CalendarDatePicker { Date = new DateTimeOffset(value), MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch, Language = I18n.Language };
         selectedTime = value.TimeOfDay;
@@ -25,7 +29,7 @@ sealed class EventDateTimeField
         AutomationProperties.SetName(date, label + I18n.T("日期"));
         AutomationProperties.SetName(time, label + I18n.T("时间"));
         View.Children.Add(new TextBlock { Text = label });
-        summary.Text = value.ToString(I18n.T("yyyy 年 M 月 d 日 HH:mm"));
+        summary.Text = value.ToString(I18n.T(dateOnly ? "yyyy 年 M 月 d 日" : "yyyy 年 M 月 d 日 HH:mm"));
         View.Children.Add(summary);
         editor.ColumnDefinitions.Add(new ColumnDefinition());
         editor.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

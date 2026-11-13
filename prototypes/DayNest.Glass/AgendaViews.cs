@@ -45,8 +45,9 @@ sealed partial class CalendarApp
     Button EventCard(Entry entry, bool includeDate)
     {
         var content = new StackPanel { Spacing = 6 };
-        string when = includeDate ? entry.Start.LocalDateTime.ToString(I18n.T("M月d日 ")) : "";
-        content.Children.Add(new TextBlock { Text = $"{when}{(entry.AllDay ? I18n.T("全天") : entry.Start.LocalDateTime.ToString("HH:mm"))}  {I18n.FallbackName(entry.Title)}", FontSize = 17, TextWrapping = TextWrapping.Wrap });
+        var start = entry.DisplayStart;
+        string when = includeDate ? start.ToString(I18n.T("M月d日 ")) : "";
+        content.Children.Add(new TextBlock { Text = $"{when}{(entry.AllDay ? I18n.T("全天") : start.ToString("HH:mm"))}  {I18n.FallbackName(entry.Title)}", FontSize = 17, TextWrapping = TextWrapping.Wrap });
         content.Children.Add(new TextBlock { Text = I18n.FallbackName(entry.Calendar), FontSize = 12, Opacity = .65 });
         if (!string.IsNullOrWhiteSpace(entry.Notes)) content.Children.Add(new TextBlock
         {

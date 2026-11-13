@@ -8,6 +8,7 @@ sealed partial class CalendarApp
 {
     Action<string, string?, bool>? featureAppearancePreview;
     ContentDialog? featureDetailsDialog;
+    ContentDialog? featureNewEventDialog;
 
     async void RunFeaturesCheck()
     {
@@ -80,6 +81,27 @@ sealed partial class CalendarApp
             Check(themeId == "sand" && !dark && accentColor == "#123456" && autoStart, "Preset/color/startup preview did not reach application state");
             instanceCheckDialog!.Hide(); await settingsTask;
             Check(!settingsOpen && CurrentAppearance() == original, "Cancel must restore theme, accent and startup draft");
+            var newEventTask = ShowNewEvent();
+            Check(featureNewEventDialog != null, "New event form did not open");
+            var eventFields = (StackPanel)((ScrollViewer)featureNewEventDialog!.Content).Content;
+            var allDay = eventFields.Children.OfType<CheckBox>().Single();
+            var dateTimeEditors = eventFields.Children.OfType<StackPanel>()
+                .Select(field => field.Children.OfType<Grid>().Single()).ToArray();
+            var dates = dateTimeEditors.Select(editor => editor.Children.OfType<CalendarDatePicker>().Single()).ToArray();
+            var times = dateTimeEditors.Select(editor => editor.Children.OfType<Button>().Single()).ToArray();
+            Check(allDay.IsChecked == false && times.All(button => button.IsEnabled), "Timed input must be enabled by default");
+            var originalTimes = times.Select(button => button.Content).ToArray();
+            allDay.IsChecked = true;
+            Check(times.All(button => !button.IsEnabled) && dates.All(picker => picker.IsEnabled),
+                "All-day mode must disable only the time controls");
+            var originalEnd = dates[1].Date!.Value.Date;
+            dates[0].Date = dates[0].Date!.Value.AddDays(2);
+            Check(dates[1].Date!.Value.Date == originalEnd.AddDays(2), "Moving an all-day start must preserve the number of days");
+            allDay.IsChecked = false;
+            Check(times.All(button => button.IsEnabled) && times.Select(button => button.Content).SequenceEqual(originalTimes),
+                "Returning to timed mode must restore the time controls and their values");
+            featureNewEventDialog!.Hide(); await newEventTask;
+            Check(!detailsOpen, "New event form must close without mutations");
             string key = selected.ToString("yyyy-MM");
             var entry = new Entry(DateTimeOffset.Now.AddDays(2), DateTimeOffset.Now.AddDays(2).AddHours(1), "Pinned test", "Test", false, "full\nnotes", Key: "test-pin");
             var pin = new Pin(entry.Title, entry.Start, Key: entry.Key, Notes: entry.Notes, Event: entry);
@@ -97,7 +119,7 @@ sealed partial class CalendarApp
             Check(Enumerable.Range(0, 8).All(i => agenda.Children.OfType<TextBlock>().Any(t =>
                 t.Text.StartsWith(selected.AddDays(i).ToString(I18n.T("M 月 d 日"), I18n.Culture)))),
                 "Recent view must show exactly eight day groups");
-            report = "PASS: six live themes/native accents, custom color/startup preview cancellation, pin notes/details, eight-day cross-year recent view and two-month loading";
+            report = "PASS: six live themes/native accents, custom color/startup preview cancellation, all-day form controls, pin notes/details, eight-day cross-year recent view and two-month loading";
         }
         catch (Exception error) { report = "FAIL: " + error; }
         File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "features-check.txt"), report);

@@ -39,7 +39,13 @@ internal static class Program {
   return 0;
  }
 }
-sealed record Entry(DateTimeOffset Start, DateTimeOffset End, string Title, string Calendar, bool AllDay, string Notes, string? Handle=null, bool Editable=false, bool Deletable=false, string? PinHandle=null, string? Key=null);
+sealed record Entry(DateTimeOffset Start, DateTimeOffset End, string Title, string Calendar, bool AllDay, string Notes, string? Handle=null, bool Editable=false, bool Deletable=false, string? PinHandle=null, string? Key=null)
+{
+    // All-day entries carry calendar dates. Their storage offset must not shift those dates.
+    public DateTime DisplayStart => AllDay ? Start.Date : Start.LocalDateTime;
+    public DateTime DisplayEnd => AllDay ? End.Date : End.LocalDateTime;
+    public bool HasDuration => AllDay ? End.Date > Start.Date : End > Start;
+}
 sealed record Pin(string Title, DateTimeOffset Start, string? ActionHandle=null, string? Key=null, string Notes="", Entry? Event=null);
 sealed record Result(Entry[]? Events, string? Status, string? Error, Pin[]? Pins,
  bool HasCache=false, bool Configured=false, double SyncedAt=0, string? Warning=null);
@@ -239,8 +245,8 @@ public sealed partial class CalendarApp : Application {
   calendar.Children.Add(grid);
  }
  static string Repo(){var d=new DirectoryInfo(AppContext.BaseDirectory);while(d!=null){if(File.Exists(Path.Combine(d.FullName,"daynest.py")))return d.FullName;d=d.Parent;}throw new DirectoryNotFoundException();}
- internal static bool OccursOn(Entry e,DateTime day)=>e.Start.LocalDateTime.Date<=day.Date&&(e.End>e.Start?e.End.LocalDateTime>day.Date:e.Start.LocalDateTime.Date==day.Date);
- internal static bool OccursInMonth(Entry e,DateTime month){var start=new DateTime(month.Year,month.Month,1);return e.Start.LocalDateTime<start.AddMonths(1)&&(e.End>e.Start?e.End.LocalDateTime>start:e.Start.LocalDateTime>=start);}
+ internal static bool OccursOn(Entry e,DateTime day)=>e.DisplayStart.Date<=day.Date&&(e.HasDuration?e.DisplayEnd>day.Date:e.DisplayStart.Date==day.Date);
+ internal static bool OccursInMonth(Entry e,DateTime month){var start=new DateTime(month.Year,month.Month,1);return e.DisplayStart<start.AddMonths(1)&&(e.HasDuration?e.DisplayEnd>start:e.DisplayStart>=start);}
  void Render(Result data){
   DrawCalendar();RenderPins(data.Pins??[]);
   agenda.Children.Clear();status.Text=string.Join(" · ",new[]{data.Status,data.Warning,startupNotice}.Where(s=>!string.IsNullOrWhiteSpace(s)));

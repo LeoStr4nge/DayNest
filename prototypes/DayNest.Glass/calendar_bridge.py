@@ -1,6 +1,6 @@
 import json, sys, time, uuid
 from pathlib import Path
-from datetime import datetime
+from datetime import date, datetime, timedelta
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import daynest as c
 
@@ -275,12 +275,22 @@ def create_event(payload):
         title = str(payload.get('title', '')).strip()
         if not title:
             raise ValueError('日程标题不能为空。')
+        all_day = payload.get('allDay') is True
         try:
-            start, end = (datetime.fromisoformat(payload[key]) for key in ('start', 'end'))
-            if start.tzinfo is None or end.tzinfo is None or end <= start:
-                raise ValueError()
+            if all_day:
+                start, last_day = (date.fromisoformat(payload[key]) for key in ('start', 'end'))
+                if last_day < start:
+                    raise ValueError()
+                # The form includes the last day; iCalendar excludes DTEND.
+                end = last_day + timedelta(days=1)
+            else:
+                start, end = (datetime.fromisoformat(payload[key]) for key in ('start', 'end'))
+                if start.tzinfo is None or end.tzinfo is None or end <= start:
+                    raise ValueError()
             request_id = str(uuid.UUID(payload['requestId']))
-        except (ValueError, KeyError, TypeError, AttributeError):
+        except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
+            if all_day:
+                raise ValueError('请选择有效的日期，结束日期不能早于开始日期。')
             raise ValueError('日期时间无效，结束时间必须晚于开始时间。')
         notes = str(payload.get('notes', ''))
         uid, raw = c.new_event_ics(title, start, end, notes, uid=request_id)
@@ -291,13 +301,16 @@ def create_event(payload):
         client.put_event(href, raw, create=True)
         warning = None
         try:
+            if all_day:
+                start = datetime.combine(start, datetime.min.time(), c.LOCAL_TZ)
+                end = datetime.combine(end, datetime.min.time(), c.LOCAL_TZ)
             cache = c.load_cache()
             if not c.cache_matches(cache, config):
                 cache = dict(username=config['username'], connection=c.connection_config(config), pins=[])
             cache['months'] = {}
             meta = dict(raw=raw, uid=uid, href=href, etag=None, calendar_url=token['url'],
                         end=end.isoformat(), description=notes, duration_seconds=(end-start).total_seconds())
-            row = c.serialize_events([(start, title, token['name'], False, meta)])[0]
+            row = c.serialize_events([(start, title, token['name'], all_day, meta)])[0]
             cache['events'] = [e for e in cache.get('events', []) if e[4].get('href') != href] + [row]
             cache['resource_cache'] = [r for r in cache.get('resource_cache', []) if r.get('href') != href]
             c.save_cache(cache)

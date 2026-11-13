@@ -17,9 +17,10 @@ sealed class EventDayIndex
         if (deduplicate) entries = entries.DistinctBy(e => e.Key ?? $"{e.Calendar}|{e.Start:O}|{e.End:O}|{e.Title}");
         foreach (var entry in entries.OrderBy(e => e.Start).ThenBy(e => e.Title))
         {
-            var start = entry.Start.LocalDateTime.Date;
-            var last = entry.End > entry.Start ? entry.End.LocalDateTime.Date : start;
-            if (entry.End > entry.Start && entry.End.LocalDateTime.TimeOfDay == TimeSpan.Zero) last = last.AddDays(-1);
+            var start = entry.DisplayStart.Date;
+            var finish = entry.DisplayEnd;
+            var last = entry.HasDuration ? finish.Date : start;
+            if (entry.HasDuration && finish.TimeOfDay == TimeSpan.Zero) last = last.AddDays(-1);
             var day = start > first ? start : first;
             for (; day < end && day <= last; day = day.AddDays(1))
             {

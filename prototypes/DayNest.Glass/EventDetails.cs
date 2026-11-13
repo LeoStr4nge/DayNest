@@ -37,8 +37,9 @@ sealed partial class CalendarApp
         CancelMonthRequests();
         bool editing = false, changed = false, saving = false;
         var title = new TextBox { Header = I18n.T("日程标题"), Text = entry.Title, IsReadOnly = true };
-        var start = new EventDateTimeField(I18n.T("开始"), entry.Start.LocalDateTime);
-        var end = new EventDateTimeField(I18n.T("结束"), entry.End.LocalDateTime);
+        var start = new EventDateTimeField(I18n.T("开始"), entry.DisplayStart, entry.AllDay);
+        var lastDay = entry.AllDay && entry.HasDuration ? entry.DisplayEnd.AddDays(-1) : entry.DisplayEnd;
+        var end = new EventDateTimeField(I18n.T("结束"), lastDay, entry.AllDay);
         var notes = new TextBox { Header = I18n.T("备注"), Text = entry.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 110, IsReadOnly = true };
         var message = new TextBlock { TextWrapping = TextWrapping.Wrap };
         bool alreadyPinned = entry.Key != null && months.Values.Any(m => (m.Pins ?? []).Any(p => p.Key == entry.Key));

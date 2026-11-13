@@ -751,10 +751,14 @@ def ics_time(value):
 def new_event_ics(title, start, end, description='', *, uid=None):
     uid = str(uuid.UUID(uid)) if uid is not None else str(uuid.uuid4())
     now = ics_time(datetime.now(timezone.utc))
+    if isinstance(start, datetime):
+        dates = [f'DTSTART:{ics_time(start)}', f'DTEND:{ics_time(end)}']
+    else:
+        dates = [f'DTSTART;VALUE=DATE:{start:%Y%m%d}', f'DTEND;VALUE=DATE:{end:%Y%m%d}']
     raw = fold_ics_lines([
         'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//DayNest//ZH',
         'BEGIN:VEVENT', f'UID:{uid}', f'DTSTAMP:{now}',
-        f'DTSTART:{ics_time(start)}', f'DTEND:{ics_time(end)}',
+        *dates,
         f'SUMMARY:{escape_ics_text(title)}', f'DESCRIPTION:{escape_ics_text(description)}',
         'END:VEVENT', 'END:VCALENDAR',
     ])

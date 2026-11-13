@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -20,14 +21,18 @@ sealed partial class CalendarApp
             : selected.Date.AddHours(9);
         var title = new TextBox { Header = I18n.T("日程标题"), PlaceholderText = I18n.T("准备安排什么？") };
         var calendarChoice = new ComboBox { Header = I18n.T("保存到日历"), DisplayMemberPath = "Name", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var allDay = new CheckBox { Content = I18n.T("全天") };
         var start = new EventDateTimeField(I18n.T("开始"), initial);
         var end = new EventDateTimeField(I18n.T("结束"), initial.AddHours(1));
         start.BeginEdit(); end.BeginEdit();
+        allDay.Checked += (_, _) => start.TimeEnabled = end.TimeEnabled = false;
+        allDay.Unchecked += (_, _) => start.TimeEnabled = end.TimeEnabled = true;
         var notes = new TextBox { Header = I18n.T("备注"), AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 90 };
         var message = new TextBlock { Text = I18n.T("正在读取可用日历…"), TextWrapping = TextWrapping.Wrap };
         var retry = new Button { Content = I18n.T("重新读取日历"), Visibility = Visibility.Collapsed };
         var body = new StackPanel { Spacing = 12, Width = Math.Max(220, Math.Min(420, page.XamlRoot.Size.Width - 96)) };
-        body.Children.Add(title); body.Children.Add(calendarChoice); body.Children.Add(start.View); body.Children.Add(end.View);
+        body.Children.Add(title); body.Children.Add(calendarChoice); body.Children.Add(allDay);
+        body.Children.Add(start.View); body.Children.Add(end.View);
         body.Children.Add(notes); body.Children.Add(message); body.Children.Add(retry);
         var form = new ScrollViewer { Content = body, MaxHeight = Math.Max(180, Math.Min(440, page.XamlRoot.Size.Height - 240)) };
         var dialog = new ContentDialog
@@ -38,13 +43,16 @@ sealed partial class CalendarApp
             IsPrimaryButtonEnabled = false
         };
         dialog.Foreground = Brush(palette.Text); dialog.Background = Brush(palette.Card);
+        if (Environment.GetCommandLineArgs().Contains("--features-check")) featureNewEventDialog = dialog;
         DateTime previousStart = initial;
         start.Changed += () =>
         {
             if (!start.TryGetValue(out var next)) return;
-            if (end.TryGetValue(out var finish) && finish > previousStart)
+            bool dateOnly = allDay.IsChecked == true;
+            if (end.TryGetValue(out var finish) && (dateOnly ? finish.Date >= previousStart.Date : finish > previousStart))
             {
-                try { end.SetValue(finish + (next - previousStart)); }
+                var shift = dateOnly ? next.Date - previousStart.Date : next - previousStart;
+                try { end.SetValue(finish + shift); }
                 catch (ArgumentOutOfRangeException) { message.Text = I18n.T("请选择有效的结束日期。"); }
             }
             previousStart = next;
@@ -62,7 +70,7 @@ sealed partial class CalendarApp
                 calendarChoice.ItemsSource = choices.Select(choice => choice with { Name = I18n.FallbackName(choice.Name) }).ToArray();
                 calendarChoice.SelectedIndex = choices.Length == 0 ? -1 : 0;
                 dialog.IsPrimaryButtonEnabled = choices.Length > 0;
-                message.Text = choices.Length > 0 ? I18n.T("添加单次日程；调整开始时间会保留原有时长。") : I18n.T("未找到日历，请先检查账户设置并同步。");
+                message.Text = choices.Length > 0 ? "" : I18n.T("未找到日历，请先检查账户设置并同步。");
             }
             catch (OperationCanceledException) when (readCancellation.IsCancellationRequested) { }
             catch { if (!closed) message.Text = I18n.T("未能读取日历，请检查网络和日历账户后重试。"); }
@@ -79,17 +87,25 @@ sealed partial class CalendarApp
             e.Cancel = true;
             if (calendarChoice.SelectedItem is not CalendarChoice target) { message.Text = I18n.T("请选择保存到哪个日历。"); return; }
             if (string.IsNullOrWhiteSpace(title.Text)) { message.Text = I18n.T("日程标题不能为空。"); return; }
-            if (!start.TryGetValue(out var begin) || !end.TryGetValue(out var finish) || finish <= begin ||
-                TimeZoneInfo.Local.IsInvalidTime(begin) || TimeZoneInfo.Local.IsInvalidTime(finish))
-            { message.Text = I18n.T("请选择有效的日期时间，结束时间必须晚于开始时间。"); return; }
+            bool dateOnly = allDay.IsChecked == true;
+            if (!start.TryGetValue(out var begin) || !end.TryGetValue(out var finish) ||
+                (dateOnly ? finish.Date < begin.Date || finish.Date == DateTime.MaxValue.Date
+                    : finish <= begin || TimeZoneInfo.Local.IsInvalidTime(begin) || TimeZoneInfo.Local.IsInvalidTime(finish)))
+            {
+                message.Text = I18n.T(dateOnly ? "请选择有效的日期，结束日期不能早于开始日期。"
+                    : "请选择有效的日期时间，结束时间必须晚于开始时间。");
+                return;
+            }
             var deferral = e.GetDeferral(); saving = true; dialog.IsPrimaryButtonEnabled = false; form.IsEnabled = false;
             try
             {
                 created = await WriteEvent("create-event", new
                 {
-                    handle = target.Handle, requestId, title = title.Text.Trim(), notes = notes.Text,
-                    start = new DateTimeOffset(begin, TimeZoneInfo.Local.GetUtcOffset(begin)).ToString("O"),
-                    end = new DateTimeOffset(finish, TimeZoneInfo.Local.GetUtcOffset(finish)).ToString("O")
+                    handle = target.Handle, requestId, title = title.Text.Trim(), notes = notes.Text, allDay = dateOnly,
+                    start = dateOnly ? begin.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        : new DateTimeOffset(begin, TimeZoneInfo.Local.GetUtcOffset(begin)).ToString("O"),
+                    end = dateOnly ? finish.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        : new DateTimeOffset(finish, TimeZoneInfo.Local.GetUtcOffset(finish)).ToString("O")
                 }, message);
                 if (created)
                 {
@@ -110,7 +126,7 @@ sealed partial class CalendarApp
             _ = ReadCalendars();
             if (!closed) await dialog.ShowAsync();
         }
-        finally { readCancellation.Cancel(); detailsOpen = false; if (!closed) ApplyAppearance(); }
+        finally { readCancellation.Cancel(); detailsOpen = false; featureNewEventDialog = null; if (!closed) ApplyAppearance(); }
         if (created && !closed)
         {
             ClearMonths(); DrawCalendar(); await Load(true);

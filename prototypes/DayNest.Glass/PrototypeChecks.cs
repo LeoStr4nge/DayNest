@@ -144,6 +144,12 @@ static class PrototypeChecks
             var yearIndex = EventDayIndex.Build([yearEvent], boundary, boundary.AddDays(8));
             Check(yearIndex.On(boundary).Count == 1 && yearIndex.On(boundary.AddDays(1)).Count == 1, "Date index must span year boundaries");
             Check(EventDayIndex.Build([allDay], day, day.AddDays(3)).On(day.AddDays(2)).Count == 0, "Exclusive all-day end must not mark the next day");
+            var offset = TimeSpan.FromHours(TimeZoneInfo.Local.GetUtcOffset(boundary) < TimeSpan.Zero ? 14 : -12);
+            var allDayAtBoundary = allDay with { Start = new DateTimeOffset(boundary, offset), End = new DateTimeOffset(boundary.AddDays(1), offset) };
+            var allDayIndex = EventDayIndex.Build([allDayAtBoundary], boundary.AddDays(-1), boundary.AddDays(2));
+            Check(allDayIndex.On(boundary).Count == 1 && allDayIndex.On(boundary.AddDays(-1)).Count == 0 &&
+                allDayIndex.On(boundary.AddDays(1)).Count == 0 && CalendarApp.OccursInMonth(allDayAtBoundary, boundary) &&
+                !CalendarApp.OccursInMonth(allDayAtBoundary, boundary.AddDays(1)), "All-day views must use calendar dates regardless of the stored offset");
             Check(MonthPolicy.Neighbors(DateTime.Today.AddMonths(12)).Length == 2 && !MonthPolicy.Neighbors(DateTime.Today.AddMonths(12)).Contains(DateTime.Today.ToString("yyyy-MM")), "Remote month prefetch must not request the unrelated current month");
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "self-test.txt"), "PASS: theme/accent contrast and persistence, startup rollback, appearance/position recovery, cache expiry, bounded date index equivalence for 507 events, midnight/all-day/instant/cross-year handling and recent deduplication");
         }

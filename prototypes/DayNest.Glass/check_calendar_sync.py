@@ -129,4 +129,29 @@ with tempfile.TemporaryDirectory(prefix='daynest-sync-check-') as folder, \
         outcome = bridge.create_event(dict(payload, requestId=str(uuid.uuid4())))
         assert outcome['ok'] and outcome['warning'], 'A committed server write must not look like failed creation'
 
-print('PASS: month restart/offline/partial-error persistence, resource/discovery reuse, account isolation, retention, creation, retry deduplication and write guards.')
+    first_day = date(2026, 12, 31)
+    for days in (1, 3):
+        last_day = first_day + timedelta(days=days - 1)
+        exclusive_end = last_day + timedelta(days=1)
+        all_day = dict(payload, requestId=str(uuid.uuid4()), allDay=True, title='All-day event',
+                       start=first_day.isoformat(), end=last_day.isoformat())
+        assert bridge.create_event(all_day) == dict(ok=True, warning=None)
+        all_day_raw = puts[url + all_day['requestId'] + '.ics']
+        assert f'DTSTART;VALUE=DATE:{first_day:%Y%m%d}' in all_day_raw
+        assert f'DTEND;VALUE=DATE:{exclusive_end:%Y%m%d}' in all_day_raw
+        view = next(event for event in bridge.read_month(key)['events'] if event['title'] == 'All-day event'
+                    and event['end'][:10] == exclusive_end.isoformat())
+        assert view['allDay'] and view['start'][:10] == first_day.isoformat()
+        start_at = datetime.fromisoformat(view['start'])
+        end_at = datetime.fromisoformat(view['end'])
+        assert c.parse_events(all_day_raw, 'Calendar', start_at, end_at)[0][3]
+        assert c.parse_events(all_day_raw, 'Calendar', end_at, end_at + timedelta(days=1)) == []
+    write_count = len(puts)
+    for invalid in (dict(all_day, end='2026-12-30'), dict(all_day, start=begin.isoformat()),
+                    dict(all_day, end='9999-12-31')):
+        try: bridge.create_event(dict(invalid, requestId=str(uuid.uuid4())))
+        except ValueError: pass
+        else: raise AssertionError('Invalid all-day creation accepted')
+    assert len(puts) == write_count
+
+print('PASS: month restart/offline/partial-error persistence, resource/discovery reuse, account isolation, retention, timed/all-day creation, retry deduplication and write guards.')
