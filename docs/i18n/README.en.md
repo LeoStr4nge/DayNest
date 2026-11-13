@@ -16,7 +16,7 @@ These screenshots show the English interface with offline sample data, not a per
 
 ## Download and get started
 
-Download the [v2.1.1 portable release](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.1.1), extract the entire ZIP file, and run `DayNest.Glass.exe`. Python and .NET runtimes are included. DayNest requires Windows 11 x64 (build 22000 or later). There is currently no installer for the WinUI version.
+Download the [v2.1.2 portable release](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.1.2), extract the entire ZIP file, and run `DayNest.Glass.exe`. Python and .NET runtimes are included. DayNest requires Windows 11 x64 (build 22000 or later). There is currently no installer for the WinUI version.
 
 The release is not code signed. You can verify the download with `SHA256SUMS.txt` from the release page. Previous release tags and archives remain available.
 
@@ -27,7 +27,7 @@ On first launch, open **Settings → Calendar account**, select a calendar provi
 ## Using DayNest
 
 - **Today / Upcoming / Month**: view today's events, the next eight days (today plus seven), or expand the month calendar and choose a date.
-- **+ Event**: choose a target calendar and enter a title, start and end times, and notes using the date and time pickers.
+- **+ Event**: choose a calendar and enter a title, start and end dates and times, and notes. Select **All day** to use dates only. Both selected dates are included.
 - Select an event to see its full details. You can edit a single non-all-day event. Deletion requires confirmation. Editing or deleting recurring events is not supported; all-day events can be deleted.
 - Pin an event countdown from its details. Select the pinned card to see its details, or right-click to unpin it.
 - **Settings → Appearance & personalization**: choose the interface language, one of six themes, a custom color, glass effect and intensity, desktop widget mode, automatic removal of expired countdowns, and launch at Windows sign-in. Choose **Save appearance** to keep your changes. A language change takes effect after restarting DayNest.

@@ -89,7 +89,7 @@ def build(version, crt, crt_licenses, replace=False):
         '首次使用在设置中填写日历账户；iCloud 使用 App 专用密码。\n'
         '账户和日程保存在 %APPDATA%\\DayNest；外观和位置在 %LOCALAPPDATA%\\DayNest。\n'
         '账户和缓存兼容历史版本，更新前请先退出旧版本。\n'
-        '支持单次非全天日程新增/编辑，删除含确认；重复日程请在日历服务中修改。\n'
+        '支持新增单次定时或全天日程。可编辑单次定时日程，删除前会确认。重复日程请在日历服务中修改。\n'
         '此版本未进行代码签名。\n'
         '许可证：GPL-3.0-only；依赖许可见 licenses。\n'
         '完整源代码及构建脚本：https://github.com/LeoStr4nge/DayNest\n', encoding='utf-8-sig')
