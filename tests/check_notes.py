@@ -18,12 +18,13 @@ event = events[0]
 assert m.event_notes(event) == description
 edited = m.edit_event_ics(raw, '修改标题', start, start + timedelta(hours=2))
 assert m.parse_events(edited, '个人', start - timedelta(days=1), start + timedelta(days=1))[0][4]['description'] == description
-for value in ('修改后的备注\n第二行，包含分号；和反斜杠\\', ''):
+for value in ('修改后的备注\n第二行，包含分号；和反斜杠\\', '第一行\r第二行\r\n\r\n第四行\n', ''):
+    expected = value.replace('\r\n', '\n').replace('\r', '\n')
     edited = m.edit_event_ics(raw, '修改标题', start, start + timedelta(hours=2), value)
     parsed = m.parse_events(edited, '个人', start - timedelta(days=1), start + timedelta(days=1))[0]
-    assert m.event_notes(parsed) == value
+    assert m.event_notes(parsed) == expected
     assert 'DESCRIPTION:提醒文字，不是日程备注' in edited
     _, created = m.new_event_ics('新日程', start, start + timedelta(hours=1), value)
-    assert m.event_notes(m.parse_events(created, '个人', start - timedelta(days=1), start + timedelta(days=1))[0]) == value
+    assert m.event_notes(m.parse_events(created, '个人', start - timedelta(days=1), start + timedelta(days=1))[0]) == expected
 
 print('Notes parsing, escaping, editing and creation checks passed.')

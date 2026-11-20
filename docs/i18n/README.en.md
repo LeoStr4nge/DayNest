@@ -16,7 +16,7 @@ These screenshots show the English interface with offline sample data, not a per
 
 ## Download and get started
 
-Download the [v2.1.2 portable release](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.1.2), extract the entire ZIP file, and run `DayNest.Glass.exe`. Python and .NET runtimes are included. DayNest requires Windows 11 x64 (build 22000 or later). There is currently no installer for the WinUI version.
+Download the [v2.1.3 portable release](https://github.com/LeoStr4nge/DayNest/releases/tag/v2.1.3), extract the entire ZIP file, and run `DayNest.Glass.exe`. Python and .NET runtimes are included. DayNest requires Windows 11 x64 (build 22000 or later). There is currently no installer for the WinUI version.
 
 The release is not code signed. You can verify the download with `SHA256SUMS.txt` from the release page. Previous release tags and archives remain available.
 

@@ -727,6 +727,7 @@ def parse_events(raw, calendar_name, range_start, range_end, resource=None, cale
 
 
 def escape_ics_text(value):
+    value = value.replace('\r\n', '\n').replace('\r', '\n')
     return value.replace('\\', '\\\\').replace('\n', '\\n').replace(',', '\\,').replace(';', '\\;')
 
 

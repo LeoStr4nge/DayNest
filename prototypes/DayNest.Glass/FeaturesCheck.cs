@@ -1,4 +1,6 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
@@ -13,6 +15,16 @@ sealed partial class CalendarApp
     async void RunFeaturesCheck()
     {
         static void Check(bool valid, string message) { if (!valid) throw new InvalidOperationException(message); }
+        static Button? FindButton(DependencyObject parent, string label)
+        {
+            if (parent is Button button && Equals(button.Content, label)) return button;
+            for (int index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+            {
+                var match = FindButton(VisualTreeHelper.GetChild(parent, index), label);
+                if (match != null) return match;
+            }
+            return null;
+        }
         string report;
         try
         {
@@ -103,7 +115,9 @@ sealed partial class CalendarApp
             featureNewEventDialog!.Hide(); await newEventTask;
             Check(!detailsOpen, "New event form must close without mutations");
             string key = selected.ToString("yyyy-MM");
-            var entry = new Entry(DateTimeOffset.Now.AddDays(2), DateTimeOffset.Now.AddDays(2).AddHours(1), "Pinned test", "Test", false, "full\nnotes", Key: "test-pin");
+            const string notesText = "第一行\n第二行\n\n第四行";
+            var entry = new Entry(DateTimeOffset.Now.AddDays(2), DateTimeOffset.Now.AddDays(2).AddHours(1),
+                "Pinned test", "Test", false, notesText, Editable: true, Key: "test-pin");
             var pin = new Pin(entry.Title, entry.Start, Key: entry.Key, Notes: entry.Notes, Event: entry);
             StoreMonth(key, months[key] with { Pins = [pin] }); Render(months[key]);
             var pinContent = (StackPanel)((Button)pinned.Children[0]).Content;
@@ -111,7 +125,19 @@ sealed partial class CalendarApp
             var detailTask = ShowEventDetails(pin.Event!);
             await Task.Delay(60);
             Check(detailsOpen && featureDetailsDialog != null, "Pinned event detail did not open");
-            featureDetailsDialog!.Hide(); await detailTask;
+            var dialog = featureDetailsDialog!;
+            var detailsBody = (StackPanel)((ScrollViewer)dialog.Content).Content;
+            var notes = detailsBody.Children.OfType<TextBox>().Single(box => Equals(box.Header, I18n.T("备注")));
+            Check(notes.IsReadOnly && notes.Text.ReplaceLineEndings("\n") == notesText,
+                "Details must retain all lines of an existing note");
+            var editButton = FindButton(dialog, dialog.PrimaryButtonText)
+                ?? throw new InvalidOperationException("Edit button was not rendered");
+            var edit = (IInvokeProvider)new ButtonAutomationPeer(editButton).GetPattern(PatternInterface.Invoke);
+            edit.Invoke();
+            await Task.Delay(50);
+            Check(!notes.IsReadOnly && notes.Text.ReplaceLineEndings("\n") == notesText,
+                "Editing must start with all original note lines");
+            dialog.Hide(); await detailTask;
             Check(!detailsOpen, "Detail must close without mutations");
             recentOverview = true; monthOverview = false; selected = new DateTime(2026, 12, 29);
             calendar.Visibility = Visibility.Collapsed; await Load(true);
@@ -119,7 +145,7 @@ sealed partial class CalendarApp
             Check(Enumerable.Range(0, 8).All(i => agenda.Children.OfType<TextBlock>().Any(t =>
                 t.Text.StartsWith(selected.AddDays(i).ToString(I18n.T("M 月 d 日"), I18n.Culture)))),
                 "Recent view must show exactly eight day groups");
-            report = "PASS: six live themes/native accents, custom color/startup preview cancellation, all-day form controls, pin notes/details, eight-day cross-year recent view and two-month loading";
+            report = "PASS: six live themes/native accents, custom color/startup preview cancellation, all-day form controls, multiline notes in details and edit mode, eight-day cross-year recent view and two-month loading";
         }
         catch (Exception error) { report = "FAIL: " + error; }
         File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "features-check.txt"), report);

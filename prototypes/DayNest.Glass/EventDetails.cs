@@ -40,7 +40,9 @@ sealed partial class CalendarApp
         var start = new EventDateTimeField(I18n.T("开始"), entry.DisplayStart, entry.AllDay);
         var lastDay = entry.AllDay && entry.HasDuration ? entry.DisplayEnd.AddDays(-1) : entry.DisplayEnd;
         var end = new EventDateTimeField(I18n.T("结束"), lastDay, entry.AllDay);
-        var notes = new TextBox { Header = I18n.T("备注"), Text = entry.Notes, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 110, IsReadOnly = true };
+        var notes = new TextBox { Header = I18n.T("备注"), AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 110, IsReadOnly = true };
+        // Assign the text after enabling multiline input, or WinUI truncates it at the first newline.
+        notes.Text = entry.Notes;
         var message = new TextBlock { TextWrapping = TextWrapping.Wrap };
         bool alreadyPinned = entry.Key != null && months.Values.Any(m => (m.Pins ?? []).Any(p => p.Key == entry.Key));
         var pinButton = new Button
